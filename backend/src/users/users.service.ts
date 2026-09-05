@@ -1,0 +1,33 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, User } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+
+@Injectable()
+export class UsersService {
+    constructor(private readonly prisma: PrismaService) { }
+
+    findByEmail(email: string): Promise<User | null> {
+        return this.prisma.user.findUnique({ where: { email } });
+    }
+
+    findById(id: number): Promise<User | null> {
+        return this.prisma.user.findUnique({ where: { id } });
+    }
+
+    create(data: Prisma.UserCreateInput): Promise<User> {
+        return this.prisma.user.create({ data });
+    }
+
+    async getProfileOrThrow(id: number): Promise<User> {
+        const user = await this.findById(id);
+        if (!user) throw new NotFoundException('Không tìm thấy người dùng');
+        return user;
+    }
+
+    updateRefreshToken(userId: number, hashedRefreshToken: string | null) {
+        return this.prisma.user.update({
+            where: { id: userId },
+            data: { hashedRefreshToken },
+        });
+    }
+}
