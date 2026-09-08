@@ -12,8 +12,7 @@ const TRUST = [
 export default function HomePage() {
     return (
         <>
-            {/* Hero */}
-            <section className="border-b border-gray-100 bg-gradient-to-br from-blue-600 to-indigo-700">
+            <section className="border-b border-gray-100 bg-linear-to-br from-blue-600 to-indigo-700">
                 <div className="mx-auto grid max-w-7xl items-center gap-8 px-4 py-16 md:grid-cols-2 md:py-24">
                     <div className="text-white">
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-medium">
@@ -52,8 +51,6 @@ export default function HomePage() {
                     </div>
                 </div>
             </section>
-
-            {/* Cam kết */}
             <section className="mx-auto max-w-7xl px-4 py-10">
                 <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
                     {TRUST.map((t) => (
@@ -67,8 +64,6 @@ export default function HomePage() {
                     ))}
                 </div>
             </section>
-
-            {/* Danh mục */}
             <section className="mx-auto max-w-7xl px-4 py-6">
                 <h2 className="text-xl font-bold text-gray-900">Danh mục nổi bật</h2>
                 <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-8">
@@ -86,8 +81,6 @@ export default function HomePage() {
                     ))}
                 </div>
             </section>
-
-            {/* Sản phẩm nổi bật — nối API khi xong module Product */}
             <section className="mx-auto max-w-7xl px-4 py-10">
                 <div className="flex items-center justify-between">
                     <h2 className="text-xl font-bold text-gray-900">Sản phẩm nổi bật</h2>
