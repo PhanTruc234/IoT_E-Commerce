@@ -42,6 +42,11 @@ export class AuthService {
         const { passwordHash, ...safe } = user;
         return safe;
     }
+    private async pruneExpiredTokens(userId: string) {
+        await this.prisma.refreshToken.deleteMany({
+            where: { userId, expiresAt: { lt: new Date() } },
+        });
+    }
     private async issueTokens(user: User, meta: SessionMeta) {
         const jti = randomUUID();
 
@@ -77,8 +82,11 @@ export class AuthService {
             },
         });
 
+        await this.pruneExpiredTokens(user.id);
+
         return { user: this.sanitize(user), accessToken, refreshToken };
     }
+
     async register(dto: RegisterDto, meta: SessionMeta) {
         const existing = await this.usersService.findByEmail(dto.email);
         if (existing) {
@@ -116,25 +124,20 @@ export class AuthService {
         const record = await this.prisma.refreshToken.findUnique({
             where: { id: jti },
         });
-
-        const invalid =
-            !record ||
-            record.userId !== userId ||
-            record.revokedAt !== null ||
-            record.expiresAt < new Date();
-        if (invalid) {
+        if (!record || record.userId !== userId || record.expiresAt < new Date()) {
             throw new ForbiddenException('Phiên đăng nhập không hợp lệ');
         }
-
-        const matches = await bcrypt.compare(presentedToken, record!.tokenHash);
+        const matches = await bcrypt.compare(presentedToken, record.tokenHash);
         if (!matches) {
+            throw new ForbiddenException('Phiên đăng nhập không hợp lệ');
+        }
+        if (record.revokedAt) {
             await this.prisma.refreshToken.updateMany({
                 where: { userId, revokedAt: null },
                 data: { revokedAt: new Date() },
             });
-            throw new ForbiddenException('Phát hiện token bị tái sử dụng');
+            throw new ForbiddenException('Phát hiện refresh token bị dùng lại — đã thu hồi mọi phiên');
         }
-
         await this.prisma.refreshToken.update({
             where: { id: jti },
             data: { revokedAt: new Date() },

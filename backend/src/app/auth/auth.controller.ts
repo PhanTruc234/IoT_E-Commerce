@@ -23,7 +23,10 @@ import { RegisterDto } from './dto/register.dto';
 
 const REFRESH_COOKIE = 'refreshToken';
 const REFRESH_COOKIE_PATH = '/api/auth';
-const REFRESH_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 ngày, khớp JWT_REFRESH_EXPIRES_IN
+const REFRESH_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+
+const ACCESS_COOKIE = 'accessToken';
+const ACCESS_MAX_AGE = 15 * 60 * 1000;
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -44,6 +47,16 @@ export class AuthController {
         });
     }
 
+    private setAccessCookie(res: Response, token: string) {
+        res.cookie(ACCESS_COOKIE, token, {
+            httpOnly: true,
+            secure: this.config.get<string>('NODE_ENV') === 'production',
+            sameSite: 'lax',
+            path: '/',
+            maxAge: ACCESS_MAX_AGE,
+        });
+    }
+
     @Public()
     @Post('register')
     @ApiOperation({ summary: 'Đăng ký tài khoản khách hàng' })
@@ -53,11 +66,12 @@ export class AuthController {
         @Headers('user-agent') userAgent: string,
         @Res({ passthrough: true }) res: Response,
     ) {
-        const { refreshToken, ...rest } = await this.authService.register(dto, {
+        const { accessToken, refreshToken, ...rest } = await this.authService.register(dto, {
             ipAddress: ip,
             userAgent,
         });
         this.setRefreshCookie(res, refreshToken);
+        this.setAccessCookie(res, accessToken);
         return rest;
     }
 
@@ -71,11 +85,12 @@ export class AuthController {
         @Headers('user-agent') userAgent: string,
         @Res({ passthrough: true }) res: Response,
     ) {
-        const { refreshToken, ...rest } = await this.authService.login(dto, {
+        const { accessToken, refreshToken, ...rest } = await this.authService.login(dto, {
             ipAddress: ip,
             userAgent,
         });
         this.setRefreshCookie(res, refreshToken);
+        this.setAccessCookie(res, accessToken);
         return rest;
     }
 
@@ -90,13 +105,14 @@ export class AuthController {
         @Headers('user-agent') userAgent: string,
         @Res({ passthrough: true }) res: Response,
     ) {
-        const { refreshToken, ...rest } = await this.authService.refresh(
+        const { accessToken, refreshToken, ...rest } = await this.authService.refresh(
             user.id,
             user.jti!,
             user.refreshToken!,
             { ipAddress: ip, userAgent },
         );
         this.setRefreshCookie(res, refreshToken);
+        this.setAccessCookie(res, accessToken);
         return rest;
     }
 
@@ -110,6 +126,7 @@ export class AuthController {
     ) {
         const result = await this.authService.logout(userId);
         res.clearCookie(REFRESH_COOKIE, { path: REFRESH_COOKIE_PATH });
+        res.clearCookie(ACCESS_COOKIE, { path: '/' });
         return result;
     }
 
