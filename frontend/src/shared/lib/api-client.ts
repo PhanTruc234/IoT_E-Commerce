@@ -1,34 +1,30 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { env } from '@/shared/config/env';
 import { useAuthStore } from '@/features/auth/store/auth.store';
-import type { AuthResponse } from '@/features/auth/types';
+import type { User } from '@/features/auth/types';
 
+// Access token nằm trong httpOnly cookie → trình duyệt tự gửi kèm (withCredentials).
+// Không cần đính Authorization header từ JS nữa.
 export const apiClient = axios.create({
     baseURL: env.apiUrl,
     withCredentials: true,
-    headers: { 'Content-Type': 'application/json' },
 });
 
-apiClient.interceptors.request.use((config) => {
-    const token = useAuthStore.getState().accessToken;
-    if (token) config.headers.Authorization = `Bearer ${token}`;
-    return config;
-});
+// Gộp nhiều 401 cùng lúc thành 1 lần refresh
+let refreshPromise: Promise<boolean> | null = null;
 
-let refreshPromise: Promise<string | null> | null = null;
-
-async function refreshAccessToken(): Promise<string | null> {
+async function tryRefresh(): Promise<boolean> {
     try {
-        const { data } = await axios.post<AuthResponse>(
+        const { data } = await axios.post<{ user: User }>(
             `${env.apiUrl}/auth/refresh`,
             {},
             { withCredentials: true },
         );
-        useAuthStore.getState().setAuth(data.accessToken, data.user);
-        return data.accessToken;
+        useAuthStore.getState().setUser(data.user);
+        return true;
     } catch {
         useAuthStore.getState().clear();
-        return null;
+        return false;
     }
 }
 
@@ -39,15 +35,13 @@ apiClient.interceptors.response.use(
         const url = original?.url ?? '';
         const isAuthRoute = ['/auth/login', '/auth/register', '/auth/refresh'].some((p) => url.includes(p));
 
+        // Access cookie hết hạn → thử refresh 1 lần rồi gọi lại request cũ
         if (error.response?.status === 401 && original && !original._retry && !isAuthRoute) {
             original._retry = true;
-            refreshPromise ??= refreshAccessToken();
-            const newToken = await refreshPromise;
+            refreshPromise ??= tryRefresh();
+            const ok = await refreshPromise;
             refreshPromise = null;
-            if (newToken) {
-                original.headers.Authorization = `Bearer ${newToken}`;
-                return apiClient(original);
-            }
+            if (ok) return apiClient(original);
         }
         return Promise.reject(error);
     },

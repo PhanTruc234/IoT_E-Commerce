@@ -12,7 +12,7 @@ export function MobileMenu() {
             <button
                 onClick={() => setOpen(true)}
                 aria-label="Mở menu"
-                className="rounded-lg p-1.5 text-gray-700 hover:bg-gray-100 md:hidden"
+                className="cursor-pointer rounded-lg p-1.5 text-gray-700 hover:bg-gray-100 md:hidden"
             >
                 <Menu className="h-6 w-6" />
             </button>
@@ -23,7 +23,7 @@ export function MobileMenu() {
                     <aside className="absolute left-0 top-0 flex h-full w-72 flex-col bg-white p-4 shadow-xl">
                         <div className="flex items-center justify-between">
                             <span className="text-lg font-bold text-gray-900">Danh mục</span>
-                            <button onClick={() => setOpen(false)} aria-label="Đóng" className="rounded-lg p-1 hover:bg-gray-100">
+                            <button onClick={() => setOpen(false)} aria-label="Đóng" className="cursor-pointer rounded-lg p-1 hover:bg-gray-100">
                                 <X className="h-5 w-5" />
                             </button>
                         </div>

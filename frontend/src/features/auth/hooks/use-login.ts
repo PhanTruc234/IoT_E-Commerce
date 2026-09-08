@@ -7,11 +7,11 @@ import type { LoginInput } from '../schemas/auth.schema';
 
 export function useLogin() {
     const router = useRouter();
-    const setAuth = useAuthStore((s) => s.setAuth);
+    const setUser = useAuthStore((s) => s.setUser);
     return useMutation({
         mutationFn: (input: LoginInput) => authApi.login(input),
         onSuccess: (data) => {
-            setAuth(data.accessToken, data.user);
+            setUser(data.user);
             router.replace(data.user.role === 'ADMIN' ? '/admin' : '/');
             router.refresh();
         },

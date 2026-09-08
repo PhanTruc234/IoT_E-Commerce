@@ -38,7 +38,7 @@ export function UserNav() {
                 onClick={() => logout.mutate()}
                 disabled={logout.isPending}
                 aria-label="Đăng xuất"
-                className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-red-600 disabled:opacity-50"
+                className="cursor-pointer rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
                 <LogOut className="h-4 w-4" />
             </button>

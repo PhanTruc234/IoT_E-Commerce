@@ -10,8 +10,12 @@ export function RequireAuth({ role, children }: { role?: Role; children: React.R
     const user = useAuthStore((s) => s.user);
 
     useEffect(() => {
-        if (status === 'unauthenticated') router.replace('/login');
-        else if (status === 'authenticated' && role && user?.role !== role) router.replace('/');
+        if (status === 'unauthenticated') {
+            router.replace('/login');
+        }
+        else if (status === 'authenticated' && role && user?.role !== role) {
+            router.replace('/');
+        }
     }, [status, role, user, router]);
 
     if (status !== 'authenticated' || (role && user?.role !== role)) {

@@ -7,7 +7,7 @@ import type { RegisterInput } from '../schemas/auth.schema';
 
 export function useRegister() {
     const router = useRouter();
-    const setAuth = useAuthStore((s) => s.setAuth);
+    const setUser = useAuthStore((s) => s.setUser);
     return useMutation({
         mutationFn: (input: RegisterInput) =>
             authApi.register({
@@ -17,7 +17,7 @@ export function useRegister() {
                 phone: input.phone ? input.phone : undefined,
             }),
         onSuccess: (data) => {
-            setAuth(data.accessToken, data.user);
+            setUser(data.user);
             router.replace('/');
             router.refresh();
         },
