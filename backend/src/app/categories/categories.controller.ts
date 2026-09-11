@@ -31,6 +31,13 @@ export class CategoriesController {
     }
 
     @Public()
+    @Get('leaves')
+    @ApiOperation({ summary: 'Danh mục không có con' })
+    getLeaves() {
+        return this.categoriesService.getLeaves();
+    }
+
+    @Public()
     @Get('slug/:slug')
     @ApiOperation({ summary: 'Chi tiết danh mục theo slug' })
     findBySlug(@Param('slug') slug: string) {
@@ -84,4 +91,5 @@ export class CategoriesController {
     remove(@Param('id') id: string) {
         return this.categoriesService.remove(id);
     }
+
 }

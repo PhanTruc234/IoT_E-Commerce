@@ -175,4 +175,20 @@ export class CategoriesService {
         }
         return roots;
     }
+    async getLeaves() {
+        const categories = await this.prisma.category.findMany({
+            where: { isActive: true },
+            orderBy: [{ name: 'asc' }],
+            select: {
+                id: true,
+                name: true,
+                icon: true,
+                parentId: true
+            },
+        });
+        const parentIds = new Set(
+            categories.map((c) => c.parentId).filter((id): id is string => !!id),
+        );
+        return categories.filter((c) => !parentIds.has(c.id));
+    }
 }

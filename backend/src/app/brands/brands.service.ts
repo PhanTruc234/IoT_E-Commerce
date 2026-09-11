@@ -53,8 +53,6 @@ export class BrandsService {
         }
 
         const updated = await this.prisma.brand.update({ where: { id }, data });
-
-        // Đổi logo → xóa logo cũ trên R2
         if (dto.logoUrl !== undefined && dto.logoUrl !== brand.logoUrl) {
             await this.storage.safeDeleteByUrl(brand.logoUrl);
         }
