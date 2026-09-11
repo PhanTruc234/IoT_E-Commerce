@@ -274,77 +274,77 @@ model ComboItem {
   @@map("combo_items")
 }
 
-// model Cart {
-//   id        String   @id @default(uuid())
-//   userId    String   @unique
-//   createdAt DateTime @default(now())
-//   updatedAt DateTime @updatedAt
+model Cart {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-//   user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-//   items CartItem[]
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items CartItem[]
 
-//   @@map("carts")
-// }
+  @@map("carts")
+}
 
-// model CartItem {
-//   id        String   @id @default(uuid())
-//   cartId    String
-//   productId String
-//   variantId String?
-//   quantity  Int      @default(1)
-//   createdAt DateTime @default(now())
-//   updatedAt DateTime @updatedAt
+model CartItem {
+  id        String   @id @default(uuid())
+  cartId    String
+  productId String
+  variantId String?
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-//   cart    Cart            @relation(fields: [cartId], references: [id], onDelete: Cascade)
-//   product Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
-//   variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  cart    Cart            @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
 
-//   @@unique([cartId, productId, variantId])
-//   @@index([cartId])
-//   @@map("cart_items")
-// }
+  @@unique([cartId, productId, variantId])
+  @@index([cartId])
+  @@map("cart_items")
+}
 
-// model Order {
-//   id            String        @id @default(uuid())
-//   code          String        @unique
-//   userId        String
-//   recipientName String
-//   phone         String
-//   address       String
-//   note          String?
-//   subtotal      Int
-//   shippingFee   Int           @default(0)
-//   total         Int
-//   status        OrderStatus   @default(PENDING)
-//   paymentMethod PaymentMethod
-//   paymentStatus PaymentStatus @default(UNPAID)
-//   paidAt        DateTime?
-//   createdAt     DateTime      @default(now())
-//   updatedAt     DateTime      @updatedAt
+model Order {
+  id            String        @id @default(uuid())
+  code          String        @unique
+  userId        String
+  recipientName String
+  phone         String
+  address       String
+  note          String?
+  subtotal      Int
+  shippingFee   Int           @default(0)
+  total         Int
+  status        OrderStatus   @default(PENDING)
+  paymentMethod PaymentMethod
+  paymentStatus PaymentStatus @default(UNPAID)
+  paidAt        DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
-//   user  User        @relation(fields: [userId], references: [id], onDelete: Restrict)
-//   items OrderItem[]
+  user  User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  items OrderItem[]
 
-//   @@index([userId])
-//   @@map("orders")
-// }
+  @@index([userId])
+  @@map("orders")
+}
 
-// model OrderItem {
-//   id           String  @id @default(uuid())
-//   orderId      String
-//   productId    String
-//   variantId    String?
-//   name         String
-//   variantLabel String?
-//   image        String?
-//   unitPrice    Int
-//   quantity     Int
-//   lineTotal    Int
+model OrderItem {
+  id           String  @id @default(uuid())
+  orderId      String
+  productId    String
+  variantId    String?
+  name         String
+  variantLabel String?
+  image        String?
+  unitPrice    Int
+  quantity     Int
+  lineTotal    Int
 
-//   order   Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
-//   product Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
-//   variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  order   Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
 
-//   @@index([orderId])
-//   @@map("order_items")
-// }
+  @@index([orderId])
+  @@map("order_items")
+}
