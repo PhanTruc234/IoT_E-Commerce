@@ -21,4 +21,6 @@ export const categoriesApi = {
     create: (p: CreateCategoryPayload) => apiClient.post<Category>('/categories', p).then((r) => r.data),
     update: (id: string, p: UpdateCategoryPayload) => apiClient.patch<Category>(`/categories/${id}`, p).then((r) => r.data),
     remove: (id: string) => apiClient.delete<{ message: string }>(`/categories/${id}`).then((r) => r.data),
+    publicTree: () => apiClient.get<CategoryTreeNode[]>('/categories/tree').then((r) => r.data),
+    publicLeaves: () => apiClient.get<Category[]>('/categories/leaves').then((r) => r.data),
 };
