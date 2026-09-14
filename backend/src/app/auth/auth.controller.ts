@@ -6,6 +6,7 @@ import {
     HttpCode,
     HttpStatus,
     Ip,
+    Patch,
     Post,
     Res,
     UseGuards,
@@ -20,6 +21,8 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
 import { RegisterDto } from './dto/register.dto';
+import { AuditService } from '../audit/audit.service';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 const REFRESH_COOKIE = 'refreshToken';
 const REFRESH_COOKIE_PATH = '/api/auth';
@@ -35,6 +38,7 @@ export class AuthController {
         private readonly authService: AuthService,
         private readonly usersService: UsersService,
         private readonly config: ConfigService,
+        private readonly audit: AuditService,
     ) { }
 
     private setRefreshCookie(res: Response, token: string) {
@@ -72,6 +76,19 @@ export class AuthController {
         });
         this.setRefreshCookie(res, refreshToken);
         this.setAccessCookie(res, accessToken);
+        void this.audit.record({
+            actorId: rest.user.id,
+            actorEmail: rest.user.email,
+            role: rest.user.role,
+            action: 'REGISTER',
+            entity: 'AUTH',
+            method: 'POST',
+            path: '/auth/register',
+            statusCode: 201,
+            ipAddress: ip,
+            userAgent,
+            summary: 'Đăng ký tài khoản',
+        });
         return rest;
     }
 
@@ -85,13 +102,42 @@ export class AuthController {
         @Headers('user-agent') userAgent: string,
         @Res({ passthrough: true }) res: Response,
     ) {
-        const { accessToken, refreshToken, ...rest } = await this.authService.login(dto, {
-            ipAddress: ip,
-            userAgent,
-        });
-        this.setRefreshCookie(res, refreshToken);
-        this.setAccessCookie(res, accessToken);
-        return rest;
+        try {
+            const { accessToken, refreshToken, ...rest } = await this.authService.login(dto, {
+                ipAddress: ip,
+                userAgent,
+            });
+            this.setRefreshCookie(res, refreshToken);
+            this.setAccessCookie(res, accessToken);
+            void this.audit.record({
+                actorId: rest.user.id,
+                actorEmail: rest.user.email,
+                role: rest.user.role,
+                action: 'LOGIN',
+                entity: 'AUTH',
+                method: 'POST',
+                path: '/auth/login',
+                statusCode: 200,
+                ipAddress: ip,
+                userAgent,
+                summary: 'Đăng nhập',
+            });
+            return rest;
+        } catch (e) {
+            void this.audit.record({
+                actorEmail: dto.email,
+                role: null,
+                action: 'LOGIN_FAILED',
+                entity: 'AUTH',
+                method: 'POST',
+                path: '/auth/login',
+                statusCode: (e as { status?: number })?.status ?? 401,
+                ipAddress: ip,
+                userAgent,
+                summary: 'Đăng nhập thất bại',
+            });
+            throw e;
+        }
     }
 
     @Public()
@@ -121,12 +167,27 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Đăng xuất (thu hồi mọi phiên + xóa cookie)' })
     async logout(
-        @CurrentUser('id') userId: string,
+        @CurrentUser() user: AuthUser,
+        @Ip() ip: string,
+        @Headers('user-agent') userAgent: string,
         @Res({ passthrough: true }) res: Response,
     ) {
-        const result = await this.authService.logout(userId);
+        const result = await this.authService.logout(user.id);
         res.clearCookie(REFRESH_COOKIE, { path: REFRESH_COOKIE_PATH });
         res.clearCookie(ACCESS_COOKIE, { path: '/' });
+        void this.audit.record({
+            actorId: user.id,
+            actorEmail: user.email,
+            role: user.role,
+            action: 'LOGOUT',
+            entity: 'AUTH',
+            method: 'POST',
+            path: '/auth/logout',
+            statusCode: 200,
+            ipAddress: ip,
+            userAgent,
+            summary: 'Đăng xuất',
+        });
         return result;
     }
 
@@ -135,6 +196,14 @@ export class AuthController {
     @ApiOperation({ summary: 'Lấy thông tin người dùng hiện tại' })
     async me(@CurrentUser('id') userId: string) {
         const user = await this.usersService.getProfileOrThrow(userId);
+        return this.authService.sanitize(user);
+    }
+
+    @ApiBearerAuth()
+    @Patch('me')
+    @ApiOperation({ summary: 'Cập nhật thông tin cá nhân' })
+    async updateMe(@CurrentUser('id') userId: string, @Body() dto: UpdateProfileDto) {
+        const user = await this.usersService.updateProfile(userId, dto);
         return this.authService.sanitize(user);
     }
 }
