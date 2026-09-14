@@ -5,6 +5,7 @@ export interface User {
     email: string;
     fullName: string;
     phone: string | null;
+    address: string | null;
     avatarUrl: string | null;
     role: Role;
     isActive: boolean;
