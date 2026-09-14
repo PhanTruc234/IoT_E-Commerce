@@ -1,8 +1,8 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Lock } from 'lucide-react';
 import { PageHeader } from '@/shared/components/admin/page-header';
 import { Spinner } from '@/shared/ui/spinner';
 import { getApiErrorMessage } from '@/shared/lib/api-error';
@@ -10,6 +10,9 @@ import { ProductForm } from '@/features/products/components/product-form';
 import { toProductPayload } from '@/features/products/schemas/product.schema';
 import { useProduct, useUpdateProduct } from '@/features/products/hooks/use-products';
 import { ImageGallery } from '@/features/products/components/image-gallery';
+import { SpecEditor } from '@/features/products/components/spec-editor';
+import { VariantsTab } from '@/features/products/components/variants-tab';
+import { ComboTab } from '@/features/products/components/combo-tab';
 
 const TABS = [
     { key: 'info', label: 'Thông tin' },
@@ -26,6 +29,16 @@ export default function EditProductPage() {
     const { data: product, isLoading, isError, error } = useProduct(id);
     const update = useUpdateProduct(id);
 
+    const disabledReason = (key: TabKey): string | null => {
+        if (!product) return null;
+        if (key === 'variants' && product.type === 'COMBO') return 'Sản phẩm Combo không dùng biến thể';
+        if (key === 'combo' && product.type === 'VARIABLE') return 'Sản phẩm có biến thể không thể làm Combo';
+        return null;
+    };
+    useEffect(() => {
+        if (product && disabledReason(tab)) setTab('info');
+    }, [product?.type]);
+
     if (isLoading) return <div className="flex justify-center py-16"><Spinner /></div>;
     if (isError || !product) return <div className="p-6 text-sm text-red-600">{getApiErrorMessage(error)}</div>;
 
@@ -34,18 +47,29 @@ export default function EditProductPage() {
             <Link href="/admin/products" className="mb-3 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-blue-600">
                 <ArrowLeft className="h-4 w-4" /> Danh sách
             </Link>
-            <PageHeader title={product.name} description={`SKU: ${product.sku}`} />
+            <PageHeader title={product.name} description={`SKU: ${product.sku} · Loại: ${product.type}`} />
             <div className="mb-5 flex flex-wrap gap-1 border-b border-gray-200">
-                {TABS.map((t) => (
-                    <button
-                        key={t.key}
-                        onClick={() => setTab(t.key)}
-                        className={`cursor-pointer border-b-2 px-4 py-2 text-sm font-medium transition ${tab === t.key ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'
-                            }`}
-                    >
-                        {t.label}
-                    </button>
-                ))}
+                {TABS.map((t) => {
+                    const reason = disabledReason(t.key);
+                    const active = tab === t.key;
+                    return (
+                        <button
+                            key={t.key}
+                            onClick={() => !reason && setTab(t.key)}
+                            disabled={!!reason}
+                            title={reason ?? undefined}
+                            className={`inline-flex items-center gap-1 border-b-2 px-4 py-2 text-sm font-medium transition ${reason
+                                ? 'cursor-not-allowed border-transparent text-gray-300'
+                                : active
+                                    ? 'cursor-pointer border-blue-600 text-blue-600'
+                                    : 'cursor-pointer border-transparent text-gray-500 hover:text-gray-800'
+                                }`}
+                        >
+                            {reason && <Lock className="h-3 w-3" />}
+                            {t.label}
+                        </button>
+                    );
+                })}
             </div>
 
             {tab === 'info' && (
@@ -82,12 +106,9 @@ export default function EditProductPage() {
             )}
 
             {tab === 'images' && <ImageGallery productId={product.id} />}
-
-            {tab !== 'info' && tab !== 'images' && (
-                <div className="rounded-xl border border-dashed border-gray-200 bg-white py-16 text-center text-sm text-gray-400">
-                    Tab “{TABS.find((t) => t.key === tab)?.label}” sẽ làm ở bước tiếp theo.
-                </div>
-            )}
+            {tab === 'specs' && <SpecEditor productId={product.id} />}
+            {tab === 'variants' && <VariantsTab productId={product.id} />}
+            {tab === 'combo' && <ComboTab productId={product.id} />}
         </div>
     );
 }
