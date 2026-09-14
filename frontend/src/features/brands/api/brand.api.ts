@@ -8,9 +8,15 @@ export interface BrandListParams {
     includeInactive?: boolean;
 }
 
+export interface BrandPayload {
+    name: string;
+    logoUrl?: string;
+    isActive?: boolean;
+}
+
 export const brandsApi = {
     list: (params: BrandListParams) => apiClient.get<BrandListResponse>('/brands', { params }).then((r) => r.data),
-    create: (form: FormData) => apiClient.post<Brand>('/brands', form).then((r) => r.data),
-    update: (id: string, form: FormData) => apiClient.patch<Brand>(`/brands/${id}`, form).then((r) => r.data),
+    create: (payload: BrandPayload) => apiClient.post<Brand>('/brands', payload).then((r) => r.data),
+    update: (id: string, payload: BrandPayload) => apiClient.patch<Brand>(`/brands/${id}`, payload).then((r) => r.data),
     remove: (id: string) => apiClient.delete<{ message: string }>(`/brands/${id}`).then((r) => r.data),
 };

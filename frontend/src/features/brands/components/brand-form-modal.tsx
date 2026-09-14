@@ -12,6 +12,7 @@ import { getApiErrorMessage } from '@/shared/lib/api-error';
 import { useCreateBrand, useUpdateBrand } from '../hooks/use-brand';
 import type { Brand } from '../types';
 import Image from 'next/image';
+import { uploadImages } from '@/features/uploads/api/uploads.api';
 
 const schema = z.object({ name: z.string().min(1, 'Nhập tên').max(100), isActive: z.boolean() });
 type FormValues = z.infer<typeof schema>;
@@ -24,12 +25,15 @@ export function BrandFormModal({ open, onClose, brand }: { open: boolean; onClos
     });
     const [file, setFile] = useState<File | null>(null);
     const [preview, setPreview] = useState<string | null>(null);
+    const [uploading, setUploading] = useState(false);
+    const [uploadError, setUploadError] = useState<string | null>(null);
     const fileRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         if (!open) return;
         reset(brand ? { name: brand.name, isActive: brand.isActive } : { name: '', isActive: true });
         setFile(null);
+        setUploadError(null);
         setPreview(brand?.logoUrl ?? null);
     }, [open, brand, reset]);
 
@@ -42,19 +46,33 @@ export function BrandFormModal({ open, onClose, brand }: { open: boolean; onClos
 
     const createMut = useCreateBrand();
     const updateMut = useUpdateBrand();
-    const pending = createMut.isPending || updateMut.isPending;
-    const error = createMut.error || updateMut.error;
+    const pending = uploading || createMut.isPending || updateMut.isPending;
+    const error = uploadError || createMut.error || updateMut.error;
 
-    const onSubmit = (v: FormValues) => {
-        const form = new FormData();
-        form.append('name', v.name);
-        form.append('isActive', String(v.isActive));
-        if (file) form.append('logo', file);
-        if (mode === 'create') {
-            createMut.mutate(form, { onSuccess: onClose });
+    const onSubmit = async (v: FormValues) => {
+        setUploadError(null);
+        let logoUrl: string | undefined;
+        if (file) {
+            try {
+                setUploading(true);
+                const [uploaded] = await uploadImages([file], 'brands');
+                logoUrl = uploaded.url;
+            } catch (e) {
+                setUploadError(getApiErrorMessage(e));
+                return;
+            } finally {
+                setUploading(false);
+            }
+        } else if (mode === 'edit' && preview && brand?.logoUrl) {
+            logoUrl = brand.logoUrl;
         }
-        else if (brand) {
-            updateMut.mutate({ id: brand.id, form }, { onSuccess: onClose });
+
+        const payload = { name: v.name, isActive: v.isActive, ...(logoUrl ? { logoUrl } : {}) };
+
+        if (mode === 'create') {
+            createMut.mutate(payload, { onSuccess: onClose });
+        } else if (brand) {
+            updateMut.mutate({ id: brand.id, payload }, { onSuccess: onClose });
         }
     };
 
