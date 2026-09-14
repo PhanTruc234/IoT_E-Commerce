@@ -1,15 +1,14 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { Mail, MapPin, Phone } from 'lucide-react';
 import { CATEGORIES } from '@/shared/config/navigation';
-
+import logo from "../../../../public/IoTechNew.png"
 export function Footer() {
     return (
         <footer className="mt-16 border-t border-gray-200 bg-gray-50">
             <div className="mx-auto grid max-w-7xl grid-cols-2 gap-8 px-4 py-12 md:grid-cols-4">
                 <div className="col-span-2 md:col-span-1">
-                    <span className="text-xl font-bold text-gray-900">
-                        TMĐT<span className="text-blue-600">IoT</span>
-                    </span>
+                    <Image src={logo} alt="IoTech" className="h-20 w-auto object-contain" />
                     <p className="mt-3 text-sm text-gray-500">
                         Cửa hàng thiết bị IoT, module, cảm biến, Arduino/ESP32 và linh kiện điện tử chính hãng.
                     </p>
@@ -57,7 +56,7 @@ export function Footer() {
 
             <div className="border-t border-gray-200 py-4">
                 <p className="mx-auto max-w-7xl px-4 text-center text-xs text-gray-400">
-                    © {new Date().getFullYear()} TMĐT IoT — Đồ án tốt nghiệp. Bảo lưu mọi quyền.
+                    © {new Date().getFullYear()} IoTech — Đồ án tốt nghiệp. Bảo lưu mọi quyền.
                 </p>
             </div>
         </footer>

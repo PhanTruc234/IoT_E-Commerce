@@ -2,10 +2,11 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { Menu, X } from 'lucide-react';
-import { CATEGORIES } from '@/shared/config/navigation';
+import { usePublicCategoryLeaves } from '@/features/products/hooks/use-storefront';
 
 export function MobileMenu() {
     const [open, setOpen] = useState(false);
+    const { data } = usePublicCategoryLeaves();
 
     return (
         <>
@@ -27,16 +28,22 @@ export function MobileMenu() {
                                 <X className="h-5 w-5" />
                             </button>
                         </div>
-                        <nav className="mt-4 flex flex-col">
-                            {CATEGORIES.map((c) => (
+                        <nav className="mt-4 flex flex-col overflow-y-auto">
+                            <Link href="/" onClick={() => setOpen(false)} className="rounded-lg px-2 py-2.5 text-sm font-semibold text-gray-800 hover:bg-gray-100">
+                                Trang chủ
+                            </Link>
+                            <Link href="/products" onClick={() => setOpen(false)} className="rounded-lg px-2 py-2.5 text-sm text-gray-700 hover:bg-gray-100">
+                                Tất cả sản phẩm
+                            </Link>
+                            <div className="my-2 border-t border-gray-100" />
+                            {data?.map((c) => (
                                 <Link
-                                    key={c.slug}
-                                    href={`/products?category=${c.slug}`}
+                                    key={c.id}
+                                    href={`/products?categoryId=${c.id}`}
                                     onClick={() => setOpen(false)}
-                                    className="flex items-center gap-3 rounded-lg px-2 py-2.5 text-sm text-gray-700 hover:bg-gray-100"
+                                    className="rounded-lg px-2 py-2.5 text-sm text-gray-700 hover:bg-gray-100"
                                 >
-                                    <c.icon className="h-5 w-5 text-blue-600" />
-                                    {c.label}
+                                    {c.name}
                                 </Link>
                             ))}
                         </nav>

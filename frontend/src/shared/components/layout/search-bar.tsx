@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search } from 'lucide-react';
+import { track } from '@/features/analytics/api/events.api';
 
 export function SearchBar() {
     const router = useRouter();
@@ -12,7 +13,10 @@ export function SearchBar() {
             onSubmit={(e) => {
                 e.preventDefault();
                 const term = q.trim();
-                if (term) router.push(`/search?q=${encodeURIComponent(term)}`);
+                if (term) {
+                    track({ type: 'SEARCH', keyword: term });
+                    router.push(`/products?search=${encodeURIComponent(term)}`);
+                }
             }}
             className="relative w-full"
             role="search"

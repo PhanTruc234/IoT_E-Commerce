@@ -1,12 +1,13 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { LogOut, Menu, Store, X } from 'lucide-react';
 import { ADMIN_NAV } from '@/shared/config/admin-nav';
 import { useAuthStore } from '@/features/auth/store/auth.store';
 import { useLogout } from '@/features/auth/hooks/use-logout';
-
+import logo from "../../../../public/IoTechNew.png"
 export function AdminShell({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const [open, setOpen] = useState(false);
@@ -37,7 +38,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         <div className="min-h-screen bg-gray-50">
             <aside className="fixed inset-y-0 left-0 hidden w-64 flex-col border-r border-gray-200 bg-white lg:flex">
                 <div className="flex h-16 items-center gap-2 border-b border-gray-100 px-5">
-                    <span className="text-lg font-bold text-gray-900">TMĐT<span className="text-blue-600">IoT</span></span>
+                    <Image src={logo} alt="IoTech" className="h-15 w-auto object-contain" />
                     <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-500">Admin</span>
                 </div>
                 <div className="flex-1 overflow-y-auto">{nav}</div>
@@ -47,7 +48,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                     <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
                     <aside className="absolute left-0 top-0 flex h-full w-64 flex-col bg-white">
                         <div className="flex h-16 items-center justify-between border-b border-gray-100 px-5">
-                            <span className="text-lg font-bold">TMĐT<span className="text-blue-600">IoT</span></span>
+                            <Image src="/logo.png" alt="IoTech" width={110} height={36} className="h-9 w-auto object-contain" />
                             <button onClick={() => setOpen(false)} className="cursor-pointer rounded-lg p-1 hover:bg-gray-100"><X className="h-5 w-5" /></button>
                         </div>
                         <div className="flex-1 overflow-y-auto">{nav}</div>
