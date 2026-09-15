@@ -5,6 +5,7 @@ import type { LoginInput } from '../schemas/auth.schema';
 export const authApi = {
     login: (input: LoginInput) => apiClient.post<AuthResponse>('/auth/login', input).then((r) => r.data),
     register: (input: RegisterPayload) => apiClient.post<AuthResponse>('/auth/register', input).then((r) => r.data),
+    google: (idToken: string) => apiClient.post<AuthResponse>('/auth/google', { idToken }).then((r) => r.data),
     me: () => apiClient.get<User>('/auth/me').then((r) => r.data),
     updateProfile: (input: { fullName?: string; phone?: string; address?: string }) =>
         apiClient.patch<User>('/auth/me', input).then((r) => r.data),
