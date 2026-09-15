@@ -23,6 +23,7 @@ import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
 import { RegisterDto } from './dto/register.dto';
 import { AuditService } from '../audit/audit.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { GoogleLoginDto } from './dto/google-login.dto';
 
 const REFRESH_COOKIE = 'refreshToken';
 const REFRESH_COOKIE_PATH = '/api/auth';
@@ -138,6 +139,35 @@ export class AuthController {
             });
             throw e;
         }
+    }
+
+    @Public()
+    @Post('google')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Đăng nhập bằng Google' })
+    async google(
+        @Body() dto: GoogleLoginDto,
+        @Ip() ip: string,
+        @Headers('user-agent') userAgent: string,
+        @Res({ passthrough: true }) res: Response,
+    ) {
+        const { accessToken, refreshToken, ...rest } = await this.authService.googleLogin(dto, { ipAddress: ip, userAgent });
+        this.setRefreshCookie(res, refreshToken);
+        this.setAccessCookie(res, accessToken);
+        void this.audit.record({
+            actorId: rest.user.id,
+            actorEmail: rest.user.email,
+            role: rest.user.role,
+            action: 'LOGIN',
+            entity: 'AUTH',
+            method: 'POST',
+            path: '/auth/google',
+            statusCode: 200,
+            ipAddress: ip,
+            userAgent,
+            summary: 'Đăng nhập bằng Google',
+        });
+        return rest;
     }
 
     @Public()

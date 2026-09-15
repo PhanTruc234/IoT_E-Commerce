@@ -13,6 +13,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { GoogleLoginDto } from './dto/google-login.dto';
+import { OAuth2Client } from 'google-auth-library';
 
 export interface AccessTokenPayload {
     sub: string;
@@ -111,7 +113,9 @@ export class AuthService {
         if (!user.isActive) {
             throw new ForbiddenException('Tài khoản đã bị khóa');
         }
-
+        if (!user.passwordHash) {
+            throw new UnauthorizedException('Tài khoản này đăng nhập bằng Google');
+        }
         const valid = await bcrypt.compare(dto.password, user.passwordHash);
         if (!valid) {
             throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
@@ -119,7 +123,53 @@ export class AuthService {
 
         return this.issueTokens(user, meta);
     }
+    async googleLogin(dto: GoogleLoginDto, meta: SessionMeta) {
+        const clientId = this.config.getOrThrow<string>('GOOGLE_CLIENT_ID');
+        const client = new OAuth2Client(clientId);
 
+        let payload;
+        try {
+            const ticket = await client.verifyIdToken({ idToken: dto.idToken, audience: clientId });
+            payload = ticket.getPayload();
+        } catch {
+            throw new UnauthorizedException('Token Google không hợp lệ');
+        }
+        if (!payload?.email) {
+            throw new UnauthorizedException('Không lấy được email từ Google');
+        }
+
+        const googleId = payload.sub;
+        let user = await this.prisma.user.findUnique({ where: { googleId } });
+
+        if (!user) {
+            const existing = await this.usersService.findByEmail(payload.email);
+            if (existing) {
+                user = await this.prisma.user.update({
+                    where: { id: existing.id },
+                    data: {
+                        googleId,
+                        avatarUrl: existing.avatarUrl ?? payload.picture ?? null,
+                        isEmailVerified: true,
+                    },
+                });
+            } else {
+                user = await this.prisma.user.create({
+                    data: {
+                        email: payload.email,
+                        fullName: payload.name ?? payload.email.split('@')[0],
+                        googleId,
+                        avatarUrl: payload.picture ?? null,
+                        isEmailVerified: true,
+                    },
+                });
+            }
+        }
+
+        if (!user.isActive) {
+            throw new ForbiddenException('Tài khoản đã bị khóa');
+        }
+        return this.issueTokens(user, meta);
+    }
     async refresh(userId: string, jti: string, presentedToken: string, meta: SessionMeta,) {
         const record = await this.prisma.refreshToken.findUnique({
             where: { id: jti },
