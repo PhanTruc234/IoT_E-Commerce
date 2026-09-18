@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Response } from 'express';
+import { CookieOptions, Response } from 'express';
 import { AuthUser, CurrentUser } from '../../core/decorators/current-user.decorator';
 import { Public } from '../../core/decorators/public.decorator';
 import { UsersService } from '../users/users.service';
@@ -42,24 +42,36 @@ export class AuthController {
         private readonly audit: AuditService,
     ) { }
 
-    private setRefreshCookie(res: Response, token: string) {
-        res.cookie(REFRESH_COOKIE, token, {
+    private cookieOptions(maxAge: number, path: string): CookieOptions {
+        const sameSite = (this.config.get<string>('COOKIE_SAMESITE') ?? 'lax').toLowerCase() as 'lax' | 'strict' | 'none';
+        const secureEnv = this.config.get<string>('COOKIE_SECURE');
+        const secure =
+            secureEnv !== undefined
+                ? secureEnv === 'true'
+                : this.config.get<string>('NODE_ENV') === 'production';
+        return {
             httpOnly: true,
-            secure: this.config.get<string>('NODE_ENV') === 'production',
-            sameSite: 'lax',
-            path: REFRESH_COOKIE_PATH,
-            maxAge: REFRESH_MAX_AGE,
-        });
+            secure: secure || sameSite === 'none',
+            sameSite,
+            domain: this.config.get<string>('COOKIE_DOMAIN') || undefined,
+            path,
+            maxAge,
+        };
+    }
+
+    private clearCookieOptions(path: string): CookieOptions {
+        return {
+            path,
+            domain: this.config.get<string>('COOKIE_DOMAIN') || undefined,
+        };
+    }
+
+    private setRefreshCookie(res: Response, token: string) {
+        res.cookie(REFRESH_COOKIE, token, this.cookieOptions(REFRESH_MAX_AGE, REFRESH_COOKIE_PATH));
     }
 
     private setAccessCookie(res: Response, token: string) {
-        res.cookie(ACCESS_COOKIE, token, {
-            httpOnly: true,
-            secure: this.config.get<string>('NODE_ENV') === 'production',
-            sameSite: 'lax',
-            path: '/',
-            maxAge: ACCESS_MAX_AGE,
-        });
+        res.cookie(ACCESS_COOKIE, token, this.cookieOptions(ACCESS_MAX_AGE, '/'));
     }
 
     @Public()
@@ -203,8 +215,8 @@ export class AuthController {
         @Res({ passthrough: true }) res: Response,
     ) {
         const result = await this.authService.logout(user.id);
-        res.clearCookie(REFRESH_COOKIE, { path: REFRESH_COOKIE_PATH });
-        res.clearCookie(ACCESS_COOKIE, { path: '/' });
+        res.clearCookie(REFRESH_COOKIE, this.clearCookieOptions(REFRESH_COOKIE_PATH));
+        res.clearCookie(ACCESS_COOKIE, this.clearCookieOptions('/'));
         void this.audit.record({
             actorId: user.id,
             actorEmail: user.email,
