@@ -20,8 +20,13 @@ async function bootstrap() {
     }),
   );
 
+  const origins = (config.get<string>('CORS_ORIGINS') ?? 'http://localhost:3000')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
   app.enableCors({
-    origin: config.get<string>('FRONTEND_URL') ?? 'http://localhost:3000',
+    origin: origins,
     credentials: true,
   });
 
