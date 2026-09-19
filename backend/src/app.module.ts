@@ -18,10 +18,12 @@ import { ReviewsModule } from './app/reviews/reviews.module';
 import { AnalyticsModule } from './app/analytics/analytics.module';
 import { AuditModule } from './app/audit/audit.module';
 import { OverviewModule } from './app/overview/overview.module';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     ScheduleModule.forRoot(),
     PrismaModule,
     UsersModule,

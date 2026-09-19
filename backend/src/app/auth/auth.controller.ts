@@ -1,19 +1,22 @@
 import {
     Body,
     Controller,
+    Delete,
     Get,
     Headers,
     HttpCode,
     HttpStatus,
     Ip,
+    Param,
     Patch,
     Post,
+    Req,
     Res,
     UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { CookieOptions, Response } from 'express';
+import { CookieOptions, Request, Response } from 'express';
 import { AuthUser, CurrentUser } from '../../core/decorators/current-user.decorator';
 import { Public } from '../../core/decorators/public.decorator';
 import { UsersService } from '../users/users.service';
@@ -24,6 +27,7 @@ import { RegisterDto } from './dto/register.dto';
 import { AuditService } from '../audit/audit.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 
 const REFRESH_COOKIE = 'refreshToken';
 const REFRESH_COOKIE_PATH = '/api/auth';
@@ -74,6 +78,8 @@ export class AuthController {
         res.cookie(ACCESS_COOKIE, token, this.cookieOptions(ACCESS_MAX_AGE, '/'));
     }
 
+    @Throttle({ default: { limit: 5, ttl: 60_000 } })
+    @UseGuards(ThrottlerGuard)
     @Public()
     @Post('register')
     @ApiOperation({ summary: 'Đăng ký tài khoản khách hàng' })
@@ -105,6 +111,8 @@ export class AuthController {
         return rest;
     }
 
+    @Throttle({ default: { limit: 5, ttl: 60_000 } })
+    @UseGuards(ThrottlerGuard)
     @Public()
     @Post('login')
     @HttpCode(HttpStatus.OK)
@@ -153,6 +161,8 @@ export class AuthController {
         }
     }
 
+    @Throttle({ default: { limit: 10, ttl: 60_000 } })
+    @UseGuards(ThrottlerGuard)
     @Public()
     @Post('google')
     @HttpCode(HttpStatus.OK)
@@ -229,6 +239,39 @@ export class AuthController {
             ipAddress: ip,
             userAgent,
             summary: 'Đăng xuất',
+        });
+        return result;
+    }
+
+    @ApiBearerAuth()
+    @Get('sessions')
+    @ApiOperation({ summary: 'Danh sách thiết bị/phiên đăng nhập' })
+    sessions(@CurrentUser('id') userId: string, @Req() req: Request) {
+        const refreshToken = (req.cookies as { refreshToken?: string })?.refreshToken;
+        return this.authService.listSessions(userId, refreshToken);
+    }
+
+    @ApiBearerAuth()
+    @Delete('sessions/:id')
+    @ApiOperation({ summary: 'Thu hồi 1 phiên đăng nhập' })
+    async revokeSession(
+        @CurrentUser('id') userId: string,
+        @Param('id') id: string,
+        @Ip() ip: string,
+        @Headers('user-agent') userAgent: string,
+    ) {
+        const result = await this.authService.revokeSession(userId, id);
+        void this.audit.record({
+            actorId: userId,
+            action: 'SESSION_REVOKED',
+            entity: 'AUTH',
+            entityId: id,
+            method: 'DELETE',
+            path: '/auth/sessions',
+            statusCode: 200,
+            ipAddress: ip,
+            userAgent,
+            summary: 'Thu hồi phiên đăng nhập',
         });
         return result;
     }

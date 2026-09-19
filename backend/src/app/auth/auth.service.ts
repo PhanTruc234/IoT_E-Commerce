@@ -2,6 +2,7 @@ import {
     ConflictException,
     ForbiddenException,
     Injectable,
+    NotFoundException,
     UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -223,7 +224,42 @@ export class AuthService {
         const user = await this.usersService.getProfileOrThrow(userId);
         return this.issueTokens(user, meta);
     }
+    async listSessions(userId: string, refreshToken?: string) {
+        let currentJti: string | null = null;
+        if (refreshToken) {
+            const decoded = this.jwtService.decode(refreshToken) as { jti?: string } | null;
+            currentJti = decoded?.jti ?? null;
+        }
+        const rows = await this.prisma.refreshToken.findMany({
+            where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, userAgent: true, ipAddress: true, createdAt: true, expiresAt: true },
+        });
 
+        const seen = new Map<string, { id: string; userAgent: string | null; ipAddress: string | null; createdAt: Date; expiresAt: Date; current: boolean }>();
+        for (const r of rows) {
+            const key = `${r.userAgent ?? ''}|${r.ipAddress ?? ''}`;
+            const existing = seen.get(key);
+            if (!existing) {
+                seen.set(key, { ...r, current: r.id === currentJti });
+            } else if (r.id === currentJti) {
+                existing.current = true;
+            }
+        }
+        return [...seen.values()];
+    }
+
+    async revokeSession(userId: string, id: string) {
+        const token = await this.prisma.refreshToken.findFirst({ where: { id, userId } });
+        if (!token) {
+            throw new NotFoundException('Không tìm thấy phiên đăng nhập');
+        }
+        await this.prisma.refreshToken.updateMany({
+            where: { userId, userAgent: token.userAgent, ipAddress: token.ipAddress, revokedAt: null },
+            data: { revokedAt: new Date() },
+        });
+        return { message: 'Đã thu hồi phiên đăng nhập' };
+    }
     async logout(userId: string) {
         await this.prisma.refreshToken.updateMany({
             where: { userId, revokedAt: null },
