@@ -1,5 +1,5 @@
 'use client';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -14,6 +14,7 @@ import { getApiErrorMessage } from '@/shared/lib/api-error';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { useCreateOrder } from '@/features/orders/hooks/use-orders';
 import { useAuthStore } from '@/features/auth/store/auth.store';
+import { PolicyModal } from '@/features/legal/components/policy-modal';
 
 const schema = z.object({
     recipientName: z.string().min(2, 'Nhập họ tên').max(100),
@@ -28,6 +29,9 @@ export default function CheckoutPage() {
     const router = useRouter();
     const user = useAuthStore((s) => s.user);
     const authStatus = useAuthStore((s) => s.status);
+
+    const [agreed, setAgreed] = useState(false);
+    const [showTerms, setShowTerms] = useState(false);
     const { data: cart, isLoading } = useCart();
     const create = useCreateOrder();
 
@@ -141,7 +145,14 @@ export default function CheckoutPage() {
                                 <span className="text-blue-600">{formatVnd(cart.subtotal + (cart.subtotal >= 500000 ? 0 : 30000))}</span>
                             </div>
                         </div>
-                        <button type="submit" disabled={create.isPending}
+                        <label className="mt-4 flex items-start gap-2 text-sm text-gray-600">
+                            <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5 h-4 w-4 rounded" />
+                            <span>
+                                Tôi đồng ý với{' '}
+                                <button type="button" onClick={() => setShowTerms(true)} className="cursor-pointer font-medium text-blue-600 hover:underline">Điều khoản mua hàng</button>
+                            </span>
+                        </label>
+                        <button type="submit" disabled={create.isPending || !agreed}
                             className="mt-4 flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-blue-600 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
                             {create.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
                             {method === 'VNPAY' ? 'Thanh toán VNPAY' : 'Đặt hàng'}
@@ -150,6 +161,7 @@ export default function CheckoutPage() {
                     </div>
                 </aside>
             </div>
+            {showTerms && <PolicyModal slug="purchase" onClose={() => setShowTerms(false)} />}
         </form>
     );
 }
