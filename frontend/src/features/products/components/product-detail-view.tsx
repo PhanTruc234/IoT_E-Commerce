@@ -205,6 +205,11 @@ export function ProductDetailView({ product }: { product: PublicProductDetail })
                             <RotateCcw className="h-4 w-4 shrink-0 text-blue-600" /> Đổi trả trong 7 ngày
                         </div>
                     </div>
+                    <p className="mt-3 text-xs text-gray-400">
+                        Xem <Link href="/legal/warranty" className="text-blue-600 hover:underline">bảo hành</Link> ·{' '}
+                        <Link href="/legal/return" className="text-blue-600 hover:underline">đổi trả</Link> ·{' '}
+                        <Link href="/legal/shipping" className="text-blue-600 hover:underline">vận chuyển</Link>
+                    </p>
                     <div className="flex items-center gap-2.5 text-gray-700">
                         <ShieldCheck className="h-4 w-4 shrink-0 text-blue-600" />
                         Bảo hành chính hãng theo số serial · <Link href="/warranty" className="text-blue-600 hover:underline">Tra cứu</Link>

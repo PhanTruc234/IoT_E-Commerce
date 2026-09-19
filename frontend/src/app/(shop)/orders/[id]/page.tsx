@@ -61,7 +61,6 @@ function OrderView() {
                     </div>
                 </div>
 
-                {/* Thanh tiến trình */}
                 {isCancelled ? (
                     <div className="mt-5 flex items-center gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
                         <XCircle className="h-5 w-5" /> Đơn hàng đã bị huỷ.
@@ -95,6 +94,7 @@ function OrderView() {
                     <div>
                         <p className="mb-1 text-xs font-semibold uppercase text-gray-400">Thanh toán</p>
                         <p className="text-gray-700">{order.paymentMethod === 'COD' ? 'Khi nhận hàng (COD)' : 'VNPAY'}</p>
+                        <Link href="/legal/purchase" className="mt-1 block text-xs text-blue-600 hover:underline">Điều khoản mua hàng</Link>
                     </div>
                 </div>
 

@@ -6,7 +6,7 @@ import logo from "../../../../public/IoTechNew.png"
 export function Footer() {
     return (
         <footer className="mt-16 border-t border-gray-200 bg-gray-50">
-            <div className="mx-auto grid max-w-7xl grid-cols-2 gap-8 px-4 py-12 md:grid-cols-4">
+            <div className="mx-auto grid max-w-7xl grid-cols-2 gap-8 px-4 py-12 md:grid-cols-5">
                 <div className="col-span-2 md:col-span-1">
                     <Image src={logo} alt="IoTech" className="h-20 w-auto object-contain" />
                     <p className="mt-3 text-sm text-gray-500">
@@ -41,6 +41,19 @@ export function Footer() {
                         <li><Link href="/warranty" className="hover:text-blue-600">Tra cứu bảo hành</Link></li>
                         <li><Link href="/orders" className="hover:text-blue-600">Tra cứu đơn hàng</Link></li>
                         <li><Link href="/account" className="hover:text-blue-600">Tài khoản của tôi</Link></li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3 className="text-sm font-semibold text-gray-900">Pháp lý</h3>
+                    <ul className="mt-3 space-y-2 text-sm text-gray-500">
+                        <li><Link href="/legal/terms" className="hover:text-blue-600">Điều khoản sử dụng</Link></li>
+                        <li><Link href="/legal/privacy" className="hover:text-blue-600">Bảo vệ dữ liệu cá nhân</Link></li>
+                        <li><Link href="/legal/return" className="hover:text-blue-600">Chính sách đổi trả</Link></li>
+                        <li><Link href="/legal/warranty" className="hover:text-blue-600">Chính sách bảo hành</Link></li>
+                        <li><Link href="/legal/shipping" className="hover:text-blue-600">Chính sách vận chuyển</Link></li>
+                        <li><Link href="/legal/payment" className="hover:text-blue-600">Chính sách thanh toán</Link></li>
+                        <li><Link href="/legal" className="hover:text-blue-600">Tất cả chính sách</Link></li>
                     </ul>
                 </div>
 
