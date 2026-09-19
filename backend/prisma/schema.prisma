@@ -68,6 +68,13 @@ enum UserEventType {
   VIEW_CATEGORY
 }
 
+enum ConsentType {
+  TERMS
+  PRIVACY
+  MARKETING_EMAIL
+  MARKETING_SMS
+}
+
 model User {
   id              String         @id @default(uuid())
   email           String         @unique
@@ -89,6 +96,7 @@ model User {
   serialsOwned    Serial[]       @relation("SerialOwner")
   questions       Question[]
   reviews         Review[]
+  userConsents    UserConsent[]
 
   @@map("users")
 }
@@ -476,4 +484,22 @@ model AuditLog {
   @@index([createdAt])
   @@index([role, createdAt])
   @@map("audit_logs")
+}
+
+model UserConsent {
+  id        String      @id @default(uuid())
+  userId    String
+  type      ConsentType
+  version   String
+  granted   Boolean     @default(true)
+  grantedAt DateTime?
+  revokedAt DateTime?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime    @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@map("user_consents")
 }

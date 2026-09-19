@@ -15,6 +15,7 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { OAuth2Client } from 'google-auth-library';
+import { POLICY_VERSION } from 'src/core/config/policy';
 
 export interface AccessTokenPayload {
     sub: string;
@@ -89,6 +90,30 @@ export class AuthService {
         return { user: this.sanitize(user), accessToken, refreshToken };
     }
 
+    private async recordSignupConsent(userId: string, meta: SessionMeta) {
+        const now = new Date();
+        await this.prisma.userConsent.createMany({
+            data: [
+                {
+                    userId,
+                    type: 'TERMS',
+                    version: POLICY_VERSION.TERMS,
+                    granted: true,
+                    grantedAt: now,
+                    ipAddress: meta.ipAddress,
+                    userAgent: meta.userAgent
+                },
+                {
+                    userId, type: 'PRIVACY',
+                    version: POLICY_VERSION.PRIVACY,
+                    granted: true, grantedAt: now,
+                    ipAddress: meta.ipAddress,
+                    userAgent: meta.userAgent
+                },
+            ],
+        });
+    }
+
     async register(dto: RegisterDto, meta: SessionMeta) {
         const existing = await this.usersService.findByEmail(dto.email);
         if (existing) {
@@ -102,6 +127,7 @@ export class AuthService {
             fullName: dto.fullName,
             phone: dto.phone,
         });
+        await this.recordSignupConsent(user.id, meta);
         return this.issueTokens(user, meta);
     }
 
@@ -162,6 +188,7 @@ export class AuthService {
                         isEmailVerified: true,
                     },
                 });
+                await this.recordSignupConsent(user.id, meta);
             }
         }
 

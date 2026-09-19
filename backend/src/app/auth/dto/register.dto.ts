@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
+    IsBoolean,
     IsEmail,
     IsOptional,
     IsString,
@@ -29,4 +30,8 @@ export class RegisterDto {
     @IsOptional()
     @Matches(/^(0|\+84)\d{9}$/, { message: 'Số điện thoại không hợp lệ' })
     phone?: string;
+
+    @ApiProperty({ description: 'Đồng ý Điều khoản & Chính sách bảo vệ dữ liệu' })
+    @IsBoolean()
+    acceptTerms: boolean;
 }
