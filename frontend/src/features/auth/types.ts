@@ -23,4 +23,5 @@ export interface RegisterPayload {
     email: string;
     password: string;
     phone?: string;
+    acceptTerms: boolean;
 }

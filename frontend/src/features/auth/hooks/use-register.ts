@@ -15,6 +15,7 @@ export function useRegister() {
                 email: input.email,
                 password: input.password,
                 phone: input.phone ? input.phone : undefined,
+                acceptTerms: true,
             }),
         onSuccess: (data) => {
             setUser(data.user);
