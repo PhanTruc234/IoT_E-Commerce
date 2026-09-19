@@ -25,3 +25,12 @@ export interface RegisterPayload {
     phone?: string;
     acceptTerms: boolean;
 }
+
+export interface LoginSession {
+    id: string;
+    userAgent: string | null;
+    ipAddress: string | null;
+    createdAt: string;
+    expiresAt: string;
+    current: boolean;
+}

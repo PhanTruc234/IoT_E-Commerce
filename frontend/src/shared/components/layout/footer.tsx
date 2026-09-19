@@ -45,15 +45,15 @@ export function Footer() {
                 </div>
 
                 <div>
-                    <h3 className="text-sm font-semibold text-gray-900">Pháp lý</h3>
-                    <ul className="mt-3 space-y-2 text-sm text-gray-500">
+                    <h3 className="text-[16px] font-semibold text-gray-900">Pháp lý</h3>
+                    <ul className="mt-3 space-y-2 text-[16px] text-gray-500">
+                        <li><Link href="/legal" className="hover:text-blue-600">Tất cả chính sách</Link></li>
                         <li><Link href="/legal/terms" className="hover:text-blue-600">Điều khoản sử dụng</Link></li>
                         <li><Link href="/legal/privacy" className="hover:text-blue-600">Bảo vệ dữ liệu cá nhân</Link></li>
                         <li><Link href="/legal/return" className="hover:text-blue-600">Chính sách đổi trả</Link></li>
                         <li><Link href="/legal/warranty" className="hover:text-blue-600">Chính sách bảo hành</Link></li>
                         <li><Link href="/legal/shipping" className="hover:text-blue-600">Chính sách vận chuyển</Link></li>
                         <li><Link href="/legal/payment" className="hover:text-blue-600">Chính sách thanh toán</Link></li>
-                        <li><Link href="/legal" className="hover:text-blue-600">Tất cả chính sách</Link></li>
                     </ul>
                 </div>
 

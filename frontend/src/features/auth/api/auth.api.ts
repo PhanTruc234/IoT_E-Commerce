@@ -11,4 +11,6 @@ export const authApi = {
         apiClient.patch<User>('/auth/me', input).then((r) => r.data),
     logout: () => apiClient.post<{ message: string }>('/auth/logout').then((r) => r.data),
     refresh: () => apiClient.post<AuthResponse>('/auth/refresh').then((r) => r.data),
+    sessions: () => apiClient.get<import('../types').LoginSession[]>('/auth/sessions').then((r) => r.data),
+    revokeSession: (id: string) => apiClient.delete<{ message: string }>(`/auth/sessions/${id}`).then((r) => r.data),
 };
