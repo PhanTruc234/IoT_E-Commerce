@@ -5,6 +5,7 @@ import { Roles } from '../../core/decorators/roles.decorator';
 import { OrdersService } from './orders.service';
 import { OrderListQueryDto } from './dto/order-list-query.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { CurrentUser } from 'src/core/decorators/current-user.decorator';
 
 @ApiTags('Admin Orders')
 @ApiBearerAuth()
@@ -29,7 +30,7 @@ export class AdminOrdersController {
     @Roles(Role.ADMIN)
     @Patch(':id/status')
     @ApiOperation({ summary: '[Admin] Đổi trạng thái (huỷ sẽ hoàn kho)' })
-    updateStatus(@Param('id') id: string, @Body() dto: UpdateOrderStatusDto) {
-        return this.service.updateStatus(id, dto.status);
+    updateStatus(@Param('id') id: string, @Body() dto: UpdateOrderStatusDto, @CurrentUser('email') actor: string,) {
+        return this.service.updateStatus(id, dto.status, actor);
     }
 }

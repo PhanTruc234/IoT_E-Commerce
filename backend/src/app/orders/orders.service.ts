@@ -22,7 +22,6 @@ export class OrdersService {
 
     async createFromCart(userId: string, dto: CreateOrderDto, ip: string) {
         const cart = await this.prisma.cart.findUnique({ where: { userId }, select: { id: true } });
-        console.log(">>> cart", cart)
         const items = cart ? await this.prisma.cartItem.findMany({
             where: { cartId: cart.id },
             include: {
@@ -40,7 +39,6 @@ export class OrdersService {
                 },
             },
         }) : [];
-        console.log(">>> cartItems", items)
         if (!items.length) {
             throw new BadRequestException('Giỏ hàng trống');
         }
@@ -73,8 +71,6 @@ export class OrdersService {
                 })),);
             }
         }
-        console.log(">>> comboComps", comboComps)
-
         const variantDec = new Map<string, number>();
         const productDec = new Map<string, number>();
         const orderItems: {
@@ -93,9 +89,7 @@ export class OrdersService {
                 throw new BadRequestException(`"${it.product.name}" không còn được bán`);
             }
             const v = it.variant;
-            console.log(">>> v", v)
             const unitPrice = v ? (v.salePrice ?? v.price) : (it.product.salePrice ?? it.product.price);
-            console.log(">>> unitPrice", unitPrice)
             let stock: number;
             if (v) {
                 if (!v.isActive) {
@@ -164,14 +158,44 @@ export class OrdersService {
                 },
                 include: { items: true },
             });
+            await tx.orderStatusHistory.create({
+                data: { orderId: created.id, status: 'PENDING', changedBy: 'Khách hàng', note: 'Đơn hàng được tạo' },
+            });
             for (const [id, dec] of variantDec) {
-                await tx.productVariant.update({ where: { id }, data: { stockQuantity: { decrement: dec } } });
+                await tx.productVariant.update({
+                    where: {
+                        id
+                    },
+                    data: {
+                        stockQuantity: {
+                            decrement: dec
+                        }
+                    }
+                });
             }
             for (const [id, dec] of productDec) {
-                await tx.product.update({ where: { id }, data: { stockQuantity: { decrement: dec } } });
+                await tx.product.update({
+                    where: {
+                        id
+                    },
+                    data: {
+                        stockQuantity: {
+                            decrement: dec
+                        }
+                    }
+                });
             }
             for (const it of items) {
-                await tx.product.update({ where: { id: it.productId }, data: { soldCount: { increment: it.quantity } } });
+                await tx.product.update({
+                    where: {
+                        id: it.productId
+                    },
+                    data: {
+                        soldCount: {
+                            increment: it.quantity
+                        }
+                    }
+                });
             }
             await tx.cartItem.deleteMany({ where: { cartId: cart!.id } });
             return created;
@@ -217,7 +241,16 @@ export class OrdersService {
     }
 
     async findOne(userId: string, id: string) {
-        const order = await this.prisma.order.findFirst({ where: { id, userId }, include: { items: true } });
+        const order = await this.prisma.order.findFirst({
+            where: { id, userId }, include: {
+                items: true,
+                orderStatusHistories: {
+                    orderBy: {
+                        createdAt: 'asc'
+                    }
+                }
+            }
+        });
         if (!order) {
             throw new NotFoundException('Không tìm thấy đơn hàng');
         }
@@ -229,18 +262,38 @@ export class OrdersService {
     }
 
     async markPaid(code: string, success: boolean) {
-        const order = await this.prisma.order.findUnique({ where: { code }, select: { paymentStatus: true } });
-        if (!order || order.paymentStatus === 'PAID') return;
-        await this.prisma.order.update({
-            where: { code },
-            data: success
-                ? {
-                    paymentStatus: 'PAID',
-                    paidAt: new Date(),
-                    status: 'CONFIRMED'
-                }
-                : { paymentStatus: 'FAILED' },
+        const order = await this.prisma.order.findUnique({
+            where: {
+                code
+            },
+            select: {
+                paymentStatus: true
+            }
         });
+        if (!order || order.paymentStatus === 'PAID') return;
+        await this.prisma.$transaction(async (tx) => {
+            const order = await tx.order.update({
+                where: { code },
+                data: success
+                    ? {
+                        paymentStatus: 'PAID',
+                        paidAt: new Date(),
+                        status: 'CONFIRMED'
+                    }
+                    : { paymentStatus: 'FAILED' },
+            });
+            if (success && order.status !== 'CONFIRMED') {
+                await tx.orderStatusHistory.create({
+                    data: {
+                        orderId: order.id,
+                        status: 'CONFIRMED',
+                        changedBy: 'Hệ thống',
+                        note: 'Thanh toán VNPAY thành công'
+                    },
+                });
+            }
+        })
+
     }
     async findAllAdmin(query: OrderListQueryDto) {
         const { page, limit, search, status, paymentStatus } = query;
@@ -277,9 +330,25 @@ export class OrdersService {
     async findOneAdmin(id: string) {
         const order = await this.prisma.order.findUnique({
             where: { id },
-            include: { items: true, user: { select: { fullName: true, email: true, phone: true } } },
+            include: {
+                items: true,
+                user: {
+                    select: {
+                        fullName: true,
+                        email: true,
+                        phone: true
+                    }
+                },
+                orderStatusHistories: {
+                    orderBy: {
+                        createdAt: 'asc'
+                    }
+                }
+            },
         });
-        if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
+        if (!order) {
+            throw new NotFoundException('Không tìm thấy đơn hàng');
+        }
         return order;
     }
 
@@ -314,7 +383,7 @@ export class OrdersService {
         const completedAt = new Date();
 
         for (const item of order.items) {
-            if (typeMap.get(item.productId) === 'COMBO') continue; // combo: bảo hành theo thành phần, bỏ qua
+            if (typeMap.get(item.productId) === 'COMBO') continue;
             const serials = await tx.serial.findMany({
                 where: { productId: item.productId, variantId: item.variantId ?? null, status: 'IN_STOCK', orderId: null },
                 take: item.quantity,
@@ -327,14 +396,19 @@ export class OrdersService {
                 await tx.serial.update({
                     where: { id: s.id },
                     data: {
-                        status: 'ACTIVATED', activatedAt: completedAt, warrantyEndAt: end,
-                        ownerUserId: order.userId, ownerName: order.recipientName, ownerPhone: order.phone, orderId: order.id,
+                        status: 'ACTIVATED',
+                        activatedAt: completedAt,
+                        warrantyEndAt: end,
+                        ownerUserId: order.userId,
+                        ownerName: order.recipientName,
+                        ownerPhone: order.phone,
+                        orderId: order.id,
                     },
                 });
             }
         }
     }
-    async updateStatus(id: string, status: OrderStatus) {
+    async updateStatus(id: string, status: OrderStatus, actor?: string) {
         const FORWARD: Record<OrderStatus, OrderStatus[]> = {
             PENDING: ['CONFIRMED', 'CANCELLED'],
             CONFIRMED: ['SHIPPING', 'CANCELLED'],
@@ -344,8 +418,12 @@ export class OrdersService {
         };
 
         const order = await this.prisma.order.findUnique({ where: { id }, include: { items: true } });
-        if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
-        if (order.status === status) return this.findOneAdmin(id);
+        if (!order) {
+            throw new NotFoundException('Không tìm thấy đơn hàng');
+        }
+        if (order.status === status) {
+            return this.findOneAdmin(id);
+        }
         if (!FORWARD[order.status].includes(status)) {
             throw new BadRequestException(`Không thể chuyển đơn từ "${order.status}" sang "${status}"`);
         }
@@ -356,6 +434,14 @@ export class OrdersService {
                 await tx.order.update({
                     where: { id },
                     data: { status: 'CANCELLED', ...(order.paymentStatus === 'PENDING' ? { paymentStatus: 'FAILED' } : {}) },
+                });
+                await tx.orderStatusHistory.create({
+                    data: {
+                        orderId: id,
+                        status: 'CANCELLED',
+                        changedBy: actor ?? 'Quản trị viên',
+                        note: 'Huỷ đơn & hoàn kho'
+                    },
                 });
             });
             return this.findOneAdmin(id);
@@ -368,7 +454,12 @@ export class OrdersService {
                 data.paidAt = new Date();
             }
             await tx.order.update({ where: { id }, data });
-            if (status === 'COMPLETED') await this.assignSerials(tx, order);
+            if (status === 'COMPLETED') {
+                await this.assignSerials(tx, order);
+            }
+            await tx.orderStatusHistory.create({
+                data: { orderId: id, status, changedBy: actor ?? 'Quản trị viên' },
+            });
         });
         return this.findOneAdmin(id);
     }
@@ -385,6 +476,14 @@ export class OrdersService {
             await tx.order.update({
                 where: { id },
                 data: { status: 'CANCELLED', ...(order.paymentStatus === 'PENDING' ? { paymentStatus: 'FAILED' } : {}) },
+            });
+            await tx.orderStatusHistory.create({
+                data: {
+                    orderId: id,
+                    status: 'CANCELLED',
+                    changedBy: 'Khách hàng',
+                    note: 'Khách hàng huỷ đơn'
+                },
             });
         });
         return this.findOne(userId, id);

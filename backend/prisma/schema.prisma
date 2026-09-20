@@ -358,9 +358,10 @@ model Order {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  user    User        @relation(fields: [userId], references: [id], onDelete: Restrict)
-  items   OrderItem[]
-  serials Serial[]
+  user                 User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  items                OrderItem[]
+  serials              Serial[]
+  orderStatusHistories OrderStatusHistory[]
 
   @@index([userId])
   @@map("orders")
@@ -502,4 +503,18 @@ model UserConsent {
 
   @@index([userId, type])
   @@map("user_consents")
+}
+
+model OrderStatusHistory {
+  id        String      @id @default(uuid())
+  orderId   String
+  status    OrderStatus
+  note      String?
+  changedBy String?
+  createdAt DateTime    @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("order_status_history")
 }
