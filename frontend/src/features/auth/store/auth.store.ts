@@ -10,8 +10,6 @@ interface AuthState {
     clear: () => void;
 }
 
-// Access & refresh token đều nằm trong httpOnly cookie (backend quản lý).
-// Store chỉ giữ thông tin user + trạng thái đăng nhập.
 export const useAuthStore = create<AuthState>((set) => ({
     user: null,
     status: 'loading',

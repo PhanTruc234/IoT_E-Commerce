@@ -12,6 +12,7 @@ import { useOrder, useCancelMyOrder, useRepayOrder } from '@/features/orders/hoo
 import { ORDER_STATUS, PAYMENT_STATUS } from '@/features/orders/constants';
 import type { OrderStatus } from '@/features/orders/types';
 import { ReviewFormModal } from '@/features/reviews/components/review-form-modal';
+import { OrderTimeline } from '@/features/orders/components/order-timeline';
 
 const STEPS: { key: OrderStatus; label: string }[] = [
     { key: 'PENDING', label: 'Chờ xác nhận' },
@@ -25,6 +26,7 @@ function OrderView() {
     const sp = useSearchParams();
     const payment = sp.get('payment');
     const { data: order, isLoading, isError, error } = useOrder(id);
+    console.log(">>> order", order)
     const cancel = useCancelMyOrder();
     const repay = useRepayOrder();
     const [confirming, setConfirming] = useState(false);
@@ -151,7 +153,12 @@ function OrderView() {
                     </div>
                 )}
             </div>
-
+            {order.orderStatusHistories && order.orderStatusHistories.length > 0 && (
+                <div className="mt-5 rounded-xl border border-gray-200 bg-white p-6">
+                    <h2 className="mb-4 text-sm font-semibold text-gray-700">Lịch sử đơn hàng</h2>
+                    <OrderTimeline history={order.orderStatusHistories} />
+                </div>
+            )}
             <ConfirmDialog
                 open={confirming}
                 title="Huỷ đơn hàng"

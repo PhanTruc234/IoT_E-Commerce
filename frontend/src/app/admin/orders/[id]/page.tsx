@@ -13,6 +13,7 @@ import { formatVnd } from '@/shared/lib/format';
 import { useAdminOrder, useUpdateOrderStatus } from '@/features/orders/hooks/use-orders';
 import { NEXT_ACTIONS, ORDER_STATUS, PAYMENT_STATUS } from '@/features/orders/constants';
 import type { OrderStatus } from '@/features/orders/types';
+import { OrderTimeline } from '@/features/orders/components/order-timeline';
 
 export default function AdminOrderDetailPage() {
     const { id } = useParams<{ id: string }>();
@@ -87,6 +88,12 @@ export default function AdminOrderDetailPage() {
                         <p className="mt-1 text-gray-600">{order.address}</p>
                         {order.note && <p className="mt-1 text-gray-500">Ghi chú: {order.note}</p>}
                     </div>
+                    {order.orderStatusHistories && order.orderStatusHistories.length > 0 && (
+                        <div className="rounded-xl border border-gray-200 bg-white p-5">
+                            <p className="mb-4 text-xs font-semibold uppercase text-gray-400">Lịch sử trạng thái</p>
+                            <OrderTimeline history={order.orderStatusHistories} />
+                        </div>
+                    )}
                     <div className="rounded-xl border border-gray-200 bg-white p-5 text-sm">
                         <p className="mb-2 text-xs font-semibold uppercase text-gray-400">Tài khoản đặt</p>
                         <p className="text-gray-800">{order.user?.fullName ?? '—'}</p>

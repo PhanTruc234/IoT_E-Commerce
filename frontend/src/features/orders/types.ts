@@ -35,6 +35,7 @@ export interface Order {
     paidAt: string | null;
     createdAt: string;
     items: OrderItem[];
+    orderStatusHistories?: OrderStatusHistory[];
 }
 export interface AdminOrderRow {
     id: string;
@@ -51,8 +52,25 @@ export interface AdminOrderRow {
 }
 export interface AdminOrderListResponse {
     data: AdminOrderRow[];
-    meta: { page: number; limit: number; total: number; totalPages: number };
+    meta: {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number
+    };
 }
 export interface AdminOrderDetail extends Order {
-    user: { fullName: string; email: string; phone: string | null } | null;
+    user: {
+        fullName: string;
+        email: string;
+        phone: string | null
+    } | null;
+}
+
+export interface OrderStatusHistory {
+    id: string;
+    status: OrderStatus;
+    note: string | null;
+    changedBy: string | null;
+    createdAt: string;
 }
