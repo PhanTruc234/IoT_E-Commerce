@@ -1,0 +1,3 @@
+# Không commit file cấu hình chứa bí mật — chỉ commit các file *.example
+.env
+env/backend.env
