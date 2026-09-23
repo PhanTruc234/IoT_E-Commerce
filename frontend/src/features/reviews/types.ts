@@ -1,11 +1,21 @@
 export type ReviewStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type ReviewModerationReason = 'SPAM' | 'OFFENSIVE' | 'IRRELEVANT' | 'FAKE' | 'PERSONAL_INFO' | 'OTHER';
 
+export const REVIEW_MODERATION_REASON: Record<ReviewModerationReason, string> = {
+    SPAM: 'Spam / quảng cáo',
+    OFFENSIVE: 'Ngôn từ phản cảm',
+    IRRELEVANT: 'Không liên quan sản phẩm',
+    FAKE: 'Đánh giá giả mạo',
+    PERSONAL_INFO: 'Lộ thông tin cá nhân',
+    OTHER: 'Lý do khác',
+};
 export interface PublicReview {
     id: string;
     rating: number;
     comment: string | null;
     createdAt: string;
     userName: string;
+    verifiedPurchase: boolean;
 }
 export interface ReviewSummary {
     count: number;
@@ -23,6 +33,8 @@ export interface AdminReview {
     rating: number;
     comment: string | null;
     status: ReviewStatus;
+    verifiedPurchase: boolean;
+    moderationReason: ReviewModerationReason | null;
     createdAt: string;
     product: { name: string };
     user: { fullName: string; email: string };

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { LayoutDashboard, LogOut, ShoppingBag, User as UserIcon, UserCircle } from 'lucide-react';
+import { LayoutDashboard, LogOut, ShoppingBag, User as UserIcon, UserCircle, LifeBuoy, Headset } from 'lucide-react';
 import { useAuthStore } from '../store/auth.store';
 import { useLogout } from '../hooks/use-logout';
 
@@ -66,6 +66,9 @@ export function UserNav() {
                     </Link>
                     <Link href="/account" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
                         <UserCircle className="h-4 w-4 text-gray-400" /> Thông tin cá nhân
+                    </Link>
+                    <Link href="/support" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
+                        <Headset className="h-4 w-4 text-gray-400" /> Hỗ trợ và giải đáp
                     </Link>
 
                     <button

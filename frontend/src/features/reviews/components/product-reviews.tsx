@@ -5,6 +5,7 @@ import { getApiErrorMessage } from '@/shared/lib/api-error';
 import { useAuthStore } from '@/features/auth/store/auth.store';
 import { useProductReviews, useReviewEligibility, useCreateReview } from '../hooks/use-reviews';
 import { Stars, StarInput } from './stars';
+import { BadgeCheck } from 'lucide-react';
 
 export function ProductReviews({ productId }: { productId: string }) {
     const authStatus = useAuthStore((s) => s.status);
@@ -75,7 +76,14 @@ export function ProductReviews({ productId }: { productId: string }) {
                     {data!.items.map((r) => (
                         <li key={r.id} className="rounded-xl border border-gray-200 bg-white p-4">
                             <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium text-gray-800">{r.userName}</span>
+                                <span className="flex items-center gap-1.5 text-sm font-medium text-gray-800">
+                                    {r.userName}
+                                    {r.verifiedPurchase && (
+                                        <span className="inline-flex items-center gap-0.5 rounded-full bg-green-50 px-1.5 py-0.5 text-[11px] font-medium text-green-600">
+                                            <BadgeCheck className="h-3 w-3" /> Đã mua
+                                        </span>
+                                    )}
+                                </span>
                                 <span className="text-xs text-gray-400">{new Date(r.createdAt).toLocaleDateString('vi-VN')}</span>
                             </div>
                             <Stars value={r.rating} size={14} />

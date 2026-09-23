@@ -41,6 +41,8 @@ export function Footer() {
                         <li><Link href="/warranty" className="hover:text-blue-600">Tra cứu bảo hành</Link></li>
                         <li><Link href="/orders" className="hover:text-blue-600">Tra cứu đơn hàng</Link></li>
                         <li><Link href="/account" className="hover:text-blue-600">Tài khoản của tôi</Link></li>
+                        <li><Link href="/support" className="hover:text-blue-600">Trung tâm hỗ trợ</Link></li>
+                        <li><Link href="/warranty" className="hover:text-blue-600">Tra cứu bảo hành</Link></li>
                     </ul>
                 </div>
 

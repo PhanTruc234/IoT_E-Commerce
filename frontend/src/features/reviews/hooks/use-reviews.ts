@@ -1,7 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { reviewsApi, type AdminReviewParams } from '../api/reviews.api';
-import type { ReviewStatus } from '../types';
+import type { ReviewModerationReason, ReviewStatus } from '../types';
 import { useAuthStore } from '@/features/auth/store/auth.store';
 
 export function useProductReviews(productId: string) {
@@ -27,11 +27,15 @@ export function useAdminReviews(params: AdminReviewParams) {
 export function useSetReviewStatus() {
     const qc = useQueryClient();
     return useMutation({
-        mutationFn: ({ id, status }: { id: string; status: Exclude<ReviewStatus, 'PENDING'> }) => reviewsApi.setStatus(id, status),
+        mutationFn: ({ id, status, reason }: { id: string; status: Exclude<ReviewStatus, 'PENDING'>; reason?: ReviewModerationReason }) =>
+            reviewsApi.setStatus(id, status, reason),
         onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'reviews'] }); qc.invalidateQueries({ queryKey: ['shop', 'reviews'] }); },
     });
 }
 export function useDeleteReview() {
     const qc = useQueryClient();
-    return useMutation({ mutationFn: (id: string) => reviewsApi.remove(id), onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'reviews'] }); qc.invalidateQueries({ queryKey: ['shop', 'reviews'] }); } });
+    return useMutation({
+        mutationFn: ({ id, reason }: { id: string; reason: ReviewModerationReason }) => reviewsApi.remove(id, reason),
+        onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'reviews'] }); qc.invalidateQueries({ queryKey: ['shop', 'reviews'] }); },
+    });
 }

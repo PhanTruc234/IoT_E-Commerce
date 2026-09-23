@@ -13,6 +13,8 @@ import { ORDER_STATUS, PAYMENT_STATUS } from '@/features/orders/constants';
 import type { OrderStatus } from '@/features/orders/types';
 import { ReviewFormModal } from '@/features/reviews/components/review-form-modal';
 import { OrderTimeline } from '@/features/orders/components/order-timeline';
+import { TicketFormModal } from '@/features/support/components/ticket-form-modal';
+import { TicketType } from '@/features/support/types';
 
 const STEPS: { key: OrderStatus; label: string }[] = [
     { key: 'PENDING', label: 'Chờ xác nhận' },
@@ -31,7 +33,7 @@ function OrderView() {
     const repay = useRepayOrder();
     const [confirming, setConfirming] = useState(false);
     const [reviewTarget, setReviewTarget] = useState<{ productId: string; name: string } | null>(null);
-
+    const [supportType, setSupportType] = useState<TicketType | null>(null);
     if (isLoading) return <p className="py-16 text-center text-sm text-gray-400">Đang tải…</p>;
     if (isError || !order) return <p className="py-16 text-center text-sm text-red-600">{getApiErrorMessage(error)}</p>;
 
@@ -158,6 +160,32 @@ function OrderView() {
                     <h2 className="mb-4 text-sm font-semibold text-gray-700">Lịch sử đơn hàng</h2>
                     <OrderTimeline history={order.orderStatusHistories} />
                 </div>
+            )}
+            {order.status !== 'CANCELLED' && (
+                <div className="mt-5 rounded-xl border border-gray-200 bg-white p-6">
+                    <h2 className="text-sm font-semibold text-gray-700">Cần hỗ trợ với đơn hàng này?</h2>
+                    <p className="mt-0.5 text-xs text-gray-400">Gửi yêu cầu, chúng tôi sẽ phản hồi trong thời gian sớm nhất.</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                        {order.status === 'COMPLETED' && (
+                            <>
+                                <button onClick={() => setSupportType('RETURN')} className="cursor-pointer rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:border-blue-300 hover:text-blue-600">Đổi / Trả hàng</button>
+                                <button onClick={() => setSupportType('WARRANTY')} className="cursor-pointer rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:border-blue-300 hover:text-blue-600">Yêu cầu bảo hành</button>
+                            </>
+                        )}
+                        <button onClick={() => setSupportType('COMPLAINT')} className="cursor-pointer rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:border-red-300 hover:text-red-600">Khiếu nại</button>
+                        <Link href="/support" className="inline-flex items-center rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50">Trung tâm hỗ trợ</Link>
+                    </div>
+                </div>
+            )}
+
+            {supportType && (
+                <TicketFormModal
+                    onClose={() => setSupportType(null)}
+                    presetType={supportType}
+                    lockType
+                    orderId={order.id}
+                    orderCode={order.code}
+                />
             )}
             <ConfirmDialog
                 open={confirming}

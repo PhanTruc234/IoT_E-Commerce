@@ -7,11 +7,12 @@ import { Badge } from '@/shared/ui/badge';
 import { Spinner } from '@/shared/ui/spinner';
 import { Input } from '@/shared/ui/input';
 import { Select } from '@/shared/ui/select';
-import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
+import { Modal } from '@/shared/ui/modal';
 import { getApiErrorMessage } from '@/shared/lib/api-error';
 import { Stars } from '@/features/reviews/components/stars';
 import { useAdminReviews, useSetReviewStatus, useDeleteReview } from '@/features/reviews/hooks/use-reviews';
-import type { AdminReview, ReviewStatus } from '@/features/reviews/types';
+import { REVIEW_MODERATION_REASON } from '@/features/reviews/types';
+import type { AdminReview, ReviewModerationReason, ReviewStatus } from '@/features/reviews/types';
 
 const STATUS: Record<ReviewStatus, { label: string; color: 'amber' | 'green' | 'red' }> = {
     PENDING: { label: 'Chờ duyệt', color: 'amber' },
@@ -19,16 +20,17 @@ const STATUS: Record<ReviewStatus, { label: string; color: 'amber' | 'green' | '
     REJECTED: { label: 'Từ chối', color: 'red' },
 };
 
+type Moderating = { review: AdminReview; action: 'REJECT' | 'DELETE' };
+
 export default function AdminReviewsPage() {
     const [page, setPage] = useState(1);
     const [searchInput, setSearchInput] = useState('');
     const [search, setSearch] = useState('');
     const [status, setStatus] = useState('');
-    const [deleting, setDeleting] = useState<AdminReview | null>(null);
+    const [moderating, setModerating] = useState<Moderating | null>(null);
 
     const { data, isLoading, isError, error, isFetching } = useAdminReviews({ page, limit: 15, search: search || undefined, status: status || undefined });
     const setReview = useSetReviewStatus();
-    const del = useDeleteReview();
 
     return (
         <div>
@@ -59,22 +61,26 @@ export default function AdminReviewsPage() {
                                     <li key={r.id} className="p-4">
                                         <div className="flex items-start justify-between gap-3">
                                             <div className="min-w-0 flex-1">
-                                                <div className="mb-1 flex items-center gap-2">
+                                                <div className="mb-1 flex flex-wrap items-center gap-2">
                                                     <span className="text-xs font-medium text-gray-500">{r.product.name}</span>
                                                     <Badge color={STATUS[r.status].color}>{STATUS[r.status].label}</Badge>
+                                                    {r.verifiedPurchase && <Badge color="green">✓ Đã mua</Badge>}
                                                 </div>
                                                 <Stars value={r.rating} size={14} />
                                                 {r.comment && <p className="mt-1 text-sm text-gray-800">{r.comment}</p>}
                                                 <p className="mt-0.5 text-xs text-gray-400">{r.user.fullName} · {new Date(r.createdAt).toLocaleDateString('vi-VN')}</p>
+                                                {r.status === 'REJECTED' && r.moderationReason && (
+                                                    <p className="mt-1 text-xs text-red-500">Lý do từ chối: {REVIEW_MODERATION_REASON[r.moderationReason]}</p>
+                                                )}
                                             </div>
                                             <div className="flex shrink-0 gap-1">
                                                 {r.status !== 'APPROVED' && (
                                                     <button onClick={() => setReview.mutate({ id: r.id, status: 'APPROVED' })} title="Duyệt" className="cursor-pointer rounded-lg p-2 text-gray-500 hover:bg-green-50 hover:text-green-600"><Check className="h-4 w-4" /></button>
                                                 )}
                                                 {r.status !== 'REJECTED' && (
-                                                    <button onClick={() => setReview.mutate({ id: r.id, status: 'REJECTED' })} title="Từ chối" className="cursor-pointer rounded-lg p-2 text-gray-500 hover:bg-red-50 hover:text-red-600"><X className="h-4 w-4" /></button>
+                                                    <button onClick={() => setModerating({ review: r, action: 'REJECT' })} title="Từ chối" className="cursor-pointer rounded-lg p-2 text-gray-500 hover:bg-red-50 hover:text-red-600"><X className="h-4 w-4" /></button>
                                                 )}
-                                                <button onClick={() => setDeleting(r)} title="Xoá" className="cursor-pointer rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                                                <button onClick={() => setModerating({ review: r, action: 'DELETE' })} title="Xoá" className="cursor-pointer rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
                                             </div>
                                         </div>
                                     </li>
@@ -93,16 +99,46 @@ export default function AdminReviewsPage() {
                 </div>
             )}
 
-            <ConfirmDialog
-                open={deleting !== null}
-                title="Xoá đánh giá"
-                message="Xoá đánh giá này?"
-                confirmText="Xoá"
-                error={del.isError ? getApiErrorMessage(del.error) : undefined}
-                loading={del.isPending}
-                onClose={() => { setDeleting(null); del.reset(); }}
-                onConfirm={() => { if (deleting) del.mutate(deleting.id, { onSuccess: () => setDeleting(null) }); }}
-            />
+            {moderating && <ModerationModal item={moderating} onClose={() => setModerating(null)} />}
         </div>
+    );
+}
+
+function ModerationModal({ item, onClose }: { item: Moderating; onClose: () => void }) {
+    const isDelete = item.action === 'DELETE';
+    const setReview = useSetReviewStatus();
+    const del = useDeleteReview();
+    const [reason, setReason] = useState<ReviewModerationReason>('SPAM');
+    const pending = setReview.isPending || del.isPending;
+    const errorMsg = setReview.isError ? getApiErrorMessage(setReview.error) : del.isError ? getApiErrorMessage(del.error) : null;
+
+    const submit = () => {
+        if (isDelete) del.mutate({ id: item.review.id, reason }, { onSuccess: onClose });
+        else setReview.mutate({ id: item.review.id, status: 'REJECTED', reason }, { onSuccess: onClose });
+    };
+
+    return (
+        <Modal open onClose={onClose} title={isDelete ? 'Xoá đánh giá' : 'Từ chối đánh giá'}
+            footer={<>
+                <Button variant="secondary" type="button" onClick={onClose}>Hủy</Button>
+                <Button variant="danger" type="button" onClick={submit} disabled={pending}>
+                    {pending ? 'Đang xử lý…' : isDelete ? 'Xoá đánh giá' : 'Từ chối'}
+                </Button>
+            </>}>
+            <div className="space-y-3">
+                <div className="rounded-lg bg-gray-50 p-3 text-sm">
+                    <p className="text-xs text-gray-400">{item.review.product.name} · {item.review.user.fullName}</p>
+                    {item.review.comment && <p className="mt-1 text-gray-800">{item.review.comment}</p>}
+                </div>
+                <div>
+                    <label className="mb-1.5 block text-sm font-medium text-gray-700">Lý do <span className="text-red-500">*</span></label>
+                    <Select value={reason} onChange={(e) => setReason(e.target.value as ReviewModerationReason)}>
+                        {Object.entries(REVIEW_MODERATION_REASON).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </Select>
+                    <p className="mt-1 text-xs text-gray-400">Lý do được lưu vào nhật ký kiểm duyệt (audit log).</p>
+                </div>
+                {errorMsg && <p className="text-sm text-red-600">{errorMsg}</p>}
+            </div>
+        </Modal>
     );
 }
