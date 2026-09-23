@@ -19,6 +19,7 @@ import { AnalyticsModule } from './app/analytics/analytics.module';
 import { AuditModule } from './app/audit/audit.module';
 import { OverviewModule } from './app/overview/overview.module';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { SupportModule } from './app/support/support.module';
 
 @Module({
   imports: [
@@ -41,7 +42,8 @@ import { ThrottlerModule } from '@nestjs/throttler';
     ReviewsModule,
     AnalyticsModule,
     AuditModule,
-    OverviewModule
+    OverviewModule,
+    SupportModule,
   ],
 })
 export class AppModule { }
