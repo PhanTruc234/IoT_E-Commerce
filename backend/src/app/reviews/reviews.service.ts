@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, ReviewModerationReason } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { buildMeta } from '../../core/utils/pagination.util';
 import { CreateReviewDto } from './dto/create-review.dto';
@@ -11,6 +11,15 @@ export class ReviewsService {
 
     private purchased(userId: string, productId: string) {
         return this.prisma.order.count({ where: { userId, status: 'COMPLETED', items: { some: { productId } } } });
+    }
+
+    private async findPurchaseOrderId(userId: string, productId: string): Promise<string | null> {
+        const order = await this.prisma.order.findFirst({
+            where: { userId, status: 'COMPLETED', items: { some: { productId } } },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true },
+        });
+        return order?.id ?? null;
     }
 
     async eligibility(userId: string, productId: string) {
@@ -29,12 +38,16 @@ export class ReviewsService {
     async create(userId: string, productId: string, dto: CreateReviewDto) {
         const p = await this.prisma.product.findUnique({ where: { id: productId }, select: { id: true } });
         if (!p) throw new NotFoundException('Không tìm thấy sản phẩm');
-        if ((await this.purchased(userId, productId)) === 0) {
-            throw new BadRequestException('Chỉ đánh giá khi đã mua và nhận hàng sản phẩm này');
-        }
+
+        const orderId = await this.findPurchaseOrderId(userId, productId);
+        if (!orderId) throw new BadRequestException('Chỉ đánh giá khi đã mua và nhận hàng sản phẩm này');
+
         const existing = await this.prisma.review.findUnique({ where: { productId_userId: { productId, userId } } });
         if (existing) throw new BadRequestException('Bạn đã đánh giá sản phẩm này');
-        return this.prisma.review.create({ data: { productId, userId, rating: dto.rating, comment: dto.comment } });
+
+        return this.prisma.review.create({
+            data: { productId, userId, orderId, verifiedPurchase: true, rating: dto.rating, comment: dto.comment },
+        });
     }
 
     async findPublic(productId: string) {
@@ -48,10 +61,12 @@ export class ReviewsService {
         return {
             count,
             average: Math.round(average * 10) / 10,
-            items: reviews.map((r) => ({ id: r.id, rating: r.rating, comment: r.comment, createdAt: r.createdAt, userName: r.user.fullName })),
+            items: reviews.map((r) => ({
+                id: r.id, rating: r.rating, comment: r.comment, createdAt: r.createdAt,
+                userName: r.user.fullName, verifiedPurchase: r.verifiedPurchase,
+            })),
         };
     }
-
     async findAllAdmin(query: ReviewListQueryDto) {
         const { page, limit, search, status } = query;
         const where: Prisma.ReviewWhereInput = {
@@ -68,15 +83,32 @@ export class ReviewsService {
         return { data, meta: buildMeta(total, page, limit) };
     }
 
-    async setStatus(id: string, status: 'APPROVED' | 'REJECTED') {
+    async setStatus(id: string, status: 'APPROVED' | 'REJECTED', reason?: ReviewModerationReason) {
         const r = await this.prisma.review.findUnique({ where: { id }, select: { id: true } });
-        if (!r) throw new NotFoundException('Không tìm thấy đánh giá');
-        return this.prisma.review.update({ where: { id }, data: { status, approvedAt: status === 'APPROVED' ? new Date() : null } });
+        if (!r) {
+            throw new NotFoundException('Không tìm thấy đánh giá');
+        }
+        if (status === 'REJECTED' && !reason) {
+            throw new BadRequestException('Vui lòng chọn lý do từ chối');
+        }
+        return this.prisma.review.update({
+            where: { id },
+            data: {
+                status,
+                approvedAt: status === 'APPROVED' ? new Date() : null,
+                moderationReason: status === 'REJECTED' ? reason : null,
+            },
+        });
     }
 
-    async remove(id: string) {
+    async remove(id: string, reason?: ReviewModerationReason) {
         const r = await this.prisma.review.findUnique({ where: { id }, select: { id: true } });
-        if (!r) throw new NotFoundException('Không tìm thấy đánh giá');
+        if (!r) {
+            throw new NotFoundException('Không tìm thấy đánh giá');
+        }
+        if (!reason) {
+            throw new BadRequestException('Vui lòng chọn lý do xoá');
+        }
         await this.prisma.review.delete({ where: { id } });
         return { message: 'Đã xoá đánh giá' };
     }

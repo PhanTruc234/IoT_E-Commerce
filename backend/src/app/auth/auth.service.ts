@@ -1,4 +1,5 @@
 import {
+    BadRequestException,
     ConflictException,
     ForbiddenException,
     Injectable,
@@ -116,6 +117,9 @@ export class AuthService {
     }
 
     async register(dto: RegisterDto, meta: SessionMeta) {
+        if (!dto.acceptTerms) {
+            throw new BadRequestException('Bạn cần đồng ý Điều khoản & Chính sách bảo vệ dữ liệu để đăng ký');
+        }
         const existing = await this.usersService.findByEmail(dto.email);
         if (existing) {
             throw new ConflictException('Email đã được sử dụng');

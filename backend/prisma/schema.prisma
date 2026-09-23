@@ -75,28 +75,57 @@ enum ConsentType {
   MARKETING_SMS
 }
 
+enum TicketType {
+  GENERAL
+  ORDER
+  RETURN
+  WARRANTY
+  COMPLAINT
+  PAYMENT
+  SHIPPING
+  PRIVACY
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum ReviewModerationReason {
+  SPAM
+  OFFENSIVE
+  IRRELEVANT
+  FAKE
+  PERSONAL_INFO
+  OTHER
+}
+
 model User {
-  id              String         @id @default(uuid())
-  email           String         @unique
+  id              String           @id @default(uuid())
+  email           String           @unique
   passwordHash    String?
   fullName        String
   phone           String?
   address         String?
   avatarUrl       String?
-  googleId        String?        @unique
-  role            Role           @default(CUSTOMER)
-  isActive        Boolean        @default(true)
-  isEmailVerified Boolean        @default(false)
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  googleId        String?          @unique
+  role            Role             @default(CUSTOMER)
+  isActive        Boolean          @default(true)
+  isEmailVerified Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
   refreshTokens   RefreshToken[]
   cart            Cart?
   orders          Order[]
   serials         Serial[]
-  serialsOwned    Serial[]       @relation("SerialOwner")
+  serialsOwned    Serial[]         @relation("SerialOwner")
   questions       Question[]
   reviews         Review[]
   userConsents    UserConsent[]
+  supportTickets  SupportTicket[]
+  supportMessages SupportMessage[]
 
   @@map("users")
 }
@@ -362,6 +391,8 @@ model Order {
   items                OrderItem[]
   serials              Serial[]
   orderStatusHistories OrderStatusHistory[]
+  supportTickets       SupportTicket[]
+  reviews              Review[]
 
   @@index([userId])
   @@map("orders")
@@ -433,18 +464,22 @@ model Question {
 }
 
 model Review {
-  id         String       @id @default(uuid())
-  productId  String
-  userId     String
-  rating     Int
-  comment    String?
-  status     ReviewStatus @default(PENDING)
-  approvedAt DateTime?
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+  id               String                  @id @default(uuid())
+  productId        String
+  userId           String
+  orderId          String?
+  rating           Int
+  comment          String?
+  status           ReviewStatus            @default(PENDING)
+  verifiedPurchase Boolean                 @default(false)
+  moderationReason ReviewModerationReason?
+  approvedAt       DateTime?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
   @@unique([productId, userId])
   @@index([productId])
@@ -517,4 +552,40 @@ model OrderStatusHistory {
 
   @@index([orderId])
   @@map("order_status_history")
+}
+
+model SupportTicket {
+  id        String       @id @default(uuid())
+  code      String       @unique
+  userId    String
+  orderId   String?
+  type      TicketType   @default(GENERAL)
+  status    TicketStatus @default(OPEN)
+  subject   String
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order    Order?           @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  messages SupportMessage[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("support_tickets")
+}
+
+model SupportMessage {
+  id          String   @id @default(uuid())
+  ticketId    String
+  senderId    String?
+  isStaff     Boolean  @default(false)
+  body        String
+  attachments String[] @default([])
+  createdAt   DateTime @default(now())
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  sender User?         @relation(fields: [senderId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId])
+  @@map("support_messages")
 }
