@@ -6,10 +6,10 @@ const prisma = new PrismaClient();
 async function main() {
     const admin = await bcrypt.hash('Admin@123', 10);
     await prisma.user.upsert({
-        where: { email: 'admin@tmdt-iot.local' },
+        where: { email: 'admin@iotech.local' },
         update: {},
         create: {
-            email: 'admin@tmdt-iot.local',
+            email: 'admin@iotech.local',
             passwordHash: admin,
             fullName: 'Quản trị viên',
             role: Role.ADMIN,
@@ -19,10 +19,10 @@ async function main() {
 
     const customer = await bcrypt.hash('Customer@123', 10);
     await prisma.user.upsert({
-        where: { email: 'customer@tmdt-iot.local' },
+        where: { email: 'customer@iotech.local' },
         update: {},
         create: {
-            email: 'customer@tmdt-iot.local',
+            email: 'customer@iotech.local',
             passwordHash: customer,
             fullName: 'Khách hàng demo',
             role: Role.CUSTOMER,
@@ -30,7 +30,7 @@ async function main() {
         },
     });
 
-    console.log('✅ Seed xong: admin@tmdt-iot.local / customer@tmdt-iot.local');
+    console.log('✅ Seed xong: admin@iotech.local / customer@iotech.local');
 }
 
 main()
