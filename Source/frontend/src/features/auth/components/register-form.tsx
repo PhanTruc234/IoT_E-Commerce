@@ -44,7 +44,7 @@ export function RegisterForm() {
 
                 <div className="space-y-1.5">
                     <label htmlFor="password" className="text-sm font-medium text-gray-700">Mật khẩu</label>
-                    <Input id="password" type="password" autoComplete="new-password" placeholder="Tối thiểu 6 ký tự" {...register('password')} />
+                    <Input id="password" type="password" autoComplete="new-password" placeholder="≥8 ký tự, có hoa, thường & ký tự đặc biệt" {...register('password')} />
                     {errors.password && <p className="text-sm text-red-600">{errors.password.message}</p>}
                 </div>
 

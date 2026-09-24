@@ -14,10 +14,13 @@ export class RegisterDto {
     @IsEmail({}, { message: 'Email không hợp lệ' })
     email: string;
 
-    @ApiProperty({ example: 'Password123', minLength: 6 })
+    @ApiProperty({ example: 'Password@123', minLength: 8 })
     @IsString()
-    @MinLength(6, { message: 'Mật khẩu tối thiểu 6 ký tự' })
+    @MinLength(8, { message: 'Mật khẩu tối thiểu 8 ký tự' })
     @MaxLength(50)
+    @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*[^A-Za-z0-9]).+$/, {
+        message: 'Mật khẩu phải có chữ hoa, chữ thường và ký tự đặc biệt',
+    })
     password: string;
 
     @ApiProperty({ example: 'Nguyễn Văn A' })
