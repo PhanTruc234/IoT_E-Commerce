@@ -4,8 +4,10 @@ import { PaymentsController } from './payments.controller';
 import { OrdersService } from './orders.service';
 import { VnpayService } from './vnpay.service';
 import { AdminOrdersController } from './admin-orders.controller';
+import { ShippingModule } from '../shipping/shipping.module';
 
 @Module({
+    imports: [ShippingModule],
     controllers: [OrdersController, PaymentsController, AdminOrdersController],
     providers: [OrdersService, VnpayService],
 })

@@ -5,15 +5,14 @@ import { VnpayService } from './vnpay.service';
 import { OrderListQueryDto } from './dto/order-list-query.dto';
 import { OrderStatus, Prisma } from '@prisma/client';
 import { buildMeta } from 'src/core/utils/pagination.util';
-
-const FREE_SHIP_FROM = 500_000;
-const SHIPPING_FEE = 30_000;
+import { ShippingService } from '../shipping/shipping.service';
 
 @Injectable()
 export class OrdersService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly vnpay: VnpayService,
+        private readonly shipping: ShippingService,
     ) { }
 
     private genCode(): string {
@@ -138,7 +137,7 @@ export class OrdersService {
         }
 
         const subtotal = orderItems.reduce((s, i) => s + i.lineTotal, 0);
-        const shippingFee = subtotal >= FREE_SHIP_FROM ? 0 : SHIPPING_FEE;
+        const shippingFee = await this.shipping.computeFee(subtotal, dto.province);
         const total = subtotal + shippingFee;
 
         const order = await this.prisma.$transaction(async (tx) => {
@@ -149,8 +148,10 @@ export class OrdersService {
                     recipientName: dto.recipientName,
                     phone: dto.phone,
                     address: dto.address,
+                    province: dto.province,
                     note: dto.note,
-                    subtotal, shippingFee, total,
+                    subtotal, shippingFee,
+                    total,
                     status: 'PENDING',
                     paymentMethod: dto.paymentMethod,
                     paymentStatus: dto.paymentMethod === 'VNPAY' ? 'PENDING' : 'UNPAID',

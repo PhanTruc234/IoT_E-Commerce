@@ -15,6 +15,10 @@ export class CreateOrderDto {
     @IsString() @MinLength(5) @MaxLength(255)
     address: string;
 
+    @ApiPropertyOptional({ description: 'Tỉnh/Thành (34 đơn vị) để tính phí vận chuyển theo khu vực' })
+    @IsOptional() @IsString() @MaxLength(100)
+    province?: string;
+
     @ApiPropertyOptional()
     @IsOptional() @IsString() @MaxLength(500)
     note?: string;

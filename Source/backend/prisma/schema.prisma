@@ -126,6 +126,7 @@ model User {
   userConsents    UserConsent[]
   supportTickets  SupportTicket[]
   supportMessages SupportMessage[]
+  wishlists       Wishlist[]
 
   @@map("users")
 }
@@ -212,6 +213,7 @@ model Product {
   serials        Serial[]
   questions      Question[]
   reviews        Review[]
+  wishlists      Wishlist[]
 
   @@index([categoryId])
   @@index([brandId])
@@ -376,6 +378,7 @@ model Order {
   recipientName String
   phone         String
   address       String
+  province      String?
   note          String?
   subtotal      Int
   shippingFee   Int           @default(0)
@@ -588,4 +591,40 @@ model SupportMessage {
 
   @@index([ticketId])
   @@map("support_messages")
+}
+
+model ShippingZone {
+  id        String   @id @default(uuid())
+  name      String
+  fee       Int
+  provinces String[] @default([])
+  isDefault Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("shipping_zones")
+}
+
+model ShippingSetting {
+  id           String   @id @default(uuid())
+  freeShipFrom Int      @default(500000)
+  updatedAt    DateTime @updatedAt
+
+  @@map("shipping_settings")
+}
+
+model Wishlist {
+  id        String   @id @default(uuid())
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@map("wishlists")
 }

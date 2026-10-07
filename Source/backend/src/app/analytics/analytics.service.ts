@@ -55,6 +55,30 @@ export class AnalyticsService {
         const cMap = new Map(cats.map((c) => [c.id, c.name]));
         const topCategories = topCatRows.map((r) => ({ categoryId: r.categoryId, name: cMap.get(r.categoryId!) ?? '(đã xoá)', views: r._count.categoryId }));
 
+        // Top 10 sản phẩm được thêm giỏ nhiều nhất (theo event ADD_TO_CART)
+        const topCartRows = await this.prisma.userEvent.groupBy({
+            by: ['productId'],
+            where: { type: 'ADD_TO_CART', productId: { not: null }, createdAt: { gte: from } },
+            _count: { productId: true },
+            orderBy: { _count: { productId: 'desc' } },
+            take: 10,
+        });
+        // Top 10 sản phẩm được đặt mua nhiều nhất (theo order_items thuộc đơn đã hoàn tất)
+        const topOrderRows = await this.prisma.orderItem.groupBy({
+            by: ['productId'],
+            where: { order: { status: 'COMPLETED', createdAt: { gte: from } } },
+            _sum: { quantity: true },
+            orderBy: { _sum: { quantity: 'desc' } },
+            take: 10,
+        });
+        const extraIds = [...new Set([...topCartRows, ...topOrderRows].map((r) => r.productId).filter((id): id is string => !!id))];
+        const extraProducts = extraIds.length
+            ? await this.prisma.product.findMany({ where: { id: { in: extraIds } }, select: { id: true, name: true } })
+            : [];
+        const epMap = new Map(extraProducts.map((p) => [p.id, p.name]));
+        const topAddToCart = topCartRows.map((r) => ({ productId: r.productId, name: epMap.get(r.productId!) ?? '(đã xoá)', count: r._count.productId }));
+        const topOrdered = topOrderRows.map((r) => ({ productId: r.productId, name: epMap.get(r.productId!) ?? '(đã xoá)', quantity: r._sum.quantity ?? 0 }));
+
         const [viewEvents, orderRows] = await Promise.all([
             this.prisma.userEvent.findMany({ where: { type: 'VIEW_PRODUCT', createdAt: { gte: from } }, select: { createdAt: true } }),
             this.prisma.order.findMany({ where: { createdAt: { gte: from } }, select: { createdAt: true } }),
@@ -74,7 +98,7 @@ export class AnalyticsService {
             days,
             totals: { views, searches, addToCart, orders },
             funnel: { views, addToCart, orders, viewToCart: pct(addToCart, views), cartToOrder: pct(orders, addToCart) },
-            topProducts, topSearches, topCategories, trend,
+            topProducts, topAddToCart, topOrdered, topSearches, topCategories, trend,
         };
     }
 }
