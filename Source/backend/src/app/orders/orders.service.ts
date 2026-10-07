@@ -6,6 +6,8 @@ import { OrderListQueryDto } from './dto/order-list-query.dto';
 import { OrderStatus, Prisma } from '@prisma/client';
 import { buildMeta } from 'src/core/utils/pagination.util';
 import { ShippingService } from '../shipping/shipping.service';
+import { CouponsService } from '../coupons/coupons.service';
+import { applyPromotions, PromotionsService } from '../promotions/promotions.service';
 
 @Injectable()
 export class OrdersService {
@@ -13,6 +15,8 @@ export class OrdersService {
         private readonly prisma: PrismaService,
         private readonly vnpay: VnpayService,
         private readonly shipping: ShippingService,
+        private readonly coupons: CouponsService,
+        private readonly promotions: PromotionsService,
     ) { }
 
     private genCode(): string {
@@ -26,7 +30,14 @@ export class OrdersService {
             include: {
                 product: {
                     select: {
-                        id: true, name: true, price: true, salePrice: true, stockQuantity: true, status: true, type: true,
+                        id: true,
+                        name: true,
+                        price: true,
+                        salePrice: true,
+                        stockQuantity: true,
+                        status: true,
+                        type: true,
+                        categoryId: true,
                         images: { where: { isPrimary: true }, take: 1, select: { imageUrl: true } },
                     },
                 },
@@ -41,6 +52,7 @@ export class OrdersService {
         if (!items.length) {
             throw new BadRequestException('Giỏ hàng trống');
         }
+        const promoRules = await this.promotions.getActiveRules();
         const comboComps = new Map<string, { quantity: number; variantId: string | null; componentId: string; stock: number }[]>();
         for (const it of items) {
             if (!it.variant && it.product.type === 'COMBO') {
@@ -88,7 +100,10 @@ export class OrdersService {
                 throw new BadRequestException(`"${it.product.name}" không còn được bán`);
             }
             const v = it.variant;
-            const unitPrice = v ? (v.salePrice ?? v.price) : (it.product.salePrice ?? it.product.price);
+            const baseUnit = v ? (v.salePrice ?? v.price) : (it.product.salePrice ?? it.product.price);
+            const promoUnit = applyPromotions(promoRules, it.productId, it.product.categoryId, v ? v.price : it.product.price);
+            const unitPrice = Math.min(baseUnit, promoUnit);
+
             let stock: number;
             if (v) {
                 if (!v.isActive) {
@@ -138,7 +153,12 @@ export class OrdersService {
 
         const subtotal = orderItems.reduce((s, i) => s + i.lineTotal, 0);
         const shippingFee = await this.shipping.computeFee(subtotal, dto.province);
-        const total = subtotal + shippingFee;
+        const cp = await this.coupons.resolve(userId, subtotal, shippingFee, dto.productCouponCode, dto.shippingCouponCode);
+        if (cp.errors.product) throw new BadRequestException(`Mã giảm giá: ${cp.errors.product}`);
+        if (cp.errors.shipping) throw new BadRequestException(`Mã vận chuyển: ${cp.errors.shipping}`);
+        const discountAmount = cp.discountAmount;
+        const shippingDiscount = cp.shippingDiscount;
+        const total = Math.max(0, subtotal - discountAmount + (shippingFee - shippingDiscount));
 
         const order = await this.prisma.$transaction(async (tx) => {
             const created = await tx.order.create({
@@ -150,8 +170,13 @@ export class OrdersService {
                     address: dto.address,
                     province: dto.province,
                     note: dto.note,
-                    subtotal, shippingFee,
+                    subtotal,
+                    shippingFee,
                     total,
+                    discountAmount,
+                    shippingDiscount,
+                    productCouponCode: cp.productCoupon?.code ?? null,
+                    shippingCouponCode: cp.shippingCoupon?.code ?? null,
                     status: 'PENDING',
                     paymentMethod: dto.paymentMethod,
                     paymentStatus: dto.paymentMethod === 'VNPAY' ? 'PENDING' : 'UNPAID',
@@ -199,9 +224,14 @@ export class OrdersService {
                 });
             }
             await tx.cartItem.deleteMany({ where: { cartId: cart!.id } });
+            if (cp.productCoupon) {
+                await this.coupons.markUsed(tx, cp.productCoupon.id, userId, created.id);
+            }
+            if (cp.shippingCoupon) {
+                await this.coupons.markUsed(tx, cp.shippingCoupon.id, userId, created.id);
+            }
             return created;
         });
-
         let paymentUrl: string | undefined;
         if (order.paymentMethod === 'VNPAY') {
             paymentUrl = this.vnpay.buildPaymentUrl({ code: order.code, amount: order.total, ip, orderInfo: `Thanh toán đơn ${order.code}` });

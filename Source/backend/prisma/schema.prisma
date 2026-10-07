@@ -102,31 +102,62 @@ enum ReviewModerationReason {
   OTHER
 }
 
+enum CouponType {
+  PRODUCT_DISCOUNT
+  FREE_SHIPPING
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+enum PromotionScope {
+  ALL
+  CATEGORY
+  PRODUCT
+}
+
+enum NotificationType {
+  SYSTEM
+  PROMOTION
+  COUPON
+  ORDER
+}
+
+enum NotificationAudience {
+  ALL
+  USER
+}
+
 model User {
-  id              String           @id @default(uuid())
-  email           String           @unique
-  passwordHash    String?
-  fullName        String
-  phone           String?
-  address         String?
-  avatarUrl       String?
-  googleId        String?          @unique
-  role            Role             @default(CUSTOMER)
-  isActive        Boolean          @default(true)
-  isEmailVerified Boolean          @default(false)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  refreshTokens   RefreshToken[]
-  cart            Cart?
-  orders          Order[]
-  serials         Serial[]
-  serialsOwned    Serial[]         @relation("SerialOwner")
-  questions       Question[]
-  reviews         Review[]
-  userConsents    UserConsent[]
-  supportTickets  SupportTicket[]
-  supportMessages SupportMessage[]
-  wishlists       Wishlist[]
+  id                String             @id @default(uuid())
+  email             String             @unique
+  passwordHash      String?
+  fullName          String
+  phone             String?
+  address           String?
+  avatarUrl         String?
+  googleId          String?            @unique
+  role              Role               @default(CUSTOMER)
+  isActive          Boolean            @default(true)
+  isEmailVerified   Boolean            @default(false)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  refreshTokens     RefreshToken[]
+  cart              Cart?
+  orders            Order[]
+  serials           Serial[]
+  serialsOwned      Serial[]           @relation("SerialOwner")
+  questions         Question[]
+  reviews           Review[]
+  userConsents      UserConsent[]
+  supportTickets    SupportTicket[]
+  supportMessages   SupportMessage[]
+  wishlists         Wishlist[]
+  userCoupons       UserCoupon[]
+  notifications     Notification[]
+  notificationReads NotificationRead[]
 
   @@map("users")
 }
@@ -160,9 +191,10 @@ model Category {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
-  children Category[] @relation("CategoryTree")
-  products Product[]
+  parent              Category?           @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children            Category[]          @relation("CategoryTree")
+  products            Product[]
+  promotionCategories PromotionCategory[]
 
   @@index([parentId])
   @@map("categories")
@@ -202,18 +234,19 @@ model Product {
   category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   brand    Brand?   @relation(fields: [brandId], references: [id], onDelete: SetNull)
 
-  images         ProductImage[]
-  specifications ProductSpecification[]
-  attributes     ProductAttribute[]
-  variants       ProductVariant[]
-  comboItems     ComboItem[]            @relation("ComboParent")
-  usedInCombos   ComboItem[]            @relation("ComboComponent")
-  cartItems      CartItem[]
-  orderItems     OrderItem[]
-  serials        Serial[]
-  questions      Question[]
-  reviews        Review[]
-  wishlists      Wishlist[]
+  images            ProductImage[]
+  specifications    ProductSpecification[]
+  attributes        ProductAttribute[]
+  variants          ProductVariant[]
+  comboItems        ComboItem[]            @relation("ComboParent")
+  usedInCombos      ComboItem[]            @relation("ComboComponent")
+  cartItems         CartItem[]
+  orderItems        OrderItem[]
+  serials           Serial[]
+  questions         Question[]
+  reviews           Review[]
+  wishlists         Wishlist[]
+  promotionProducts PromotionProduct[]
 
   @@index([categoryId])
   @@index([brandId])
@@ -372,23 +405,27 @@ model CartItem {
 }
 
 model Order {
-  id            String        @id @default(uuid())
-  code          String        @unique
-  userId        String
-  recipientName String
-  phone         String
-  address       String
-  province      String?
-  note          String?
-  subtotal      Int
-  shippingFee   Int           @default(0)
-  total         Int
-  status        OrderStatus   @default(PENDING)
-  paymentMethod PaymentMethod
-  paymentStatus PaymentStatus @default(UNPAID)
-  paidAt        DateTime?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id                 String        @id @default(uuid())
+  code               String        @unique
+  userId             String
+  recipientName      String
+  phone              String
+  address            String
+  province           String?
+  note               String?
+  discountAmount     Int           @default(0)
+  shippingDiscount   Int           @default(0)
+  productCouponCode  String?
+  shippingCouponCode String?
+  subtotal           Int
+  shippingFee        Int           @default(0)
+  total              Int
+  status             OrderStatus   @default(PENDING)
+  paymentMethod      PaymentMethod
+  paymentStatus      PaymentStatus @default(UNPAID)
+  paidAt             DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
   user                 User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
   items                OrderItem[]
@@ -627,4 +664,118 @@ model Wishlist {
   @@unique([userId, productId])
   @@index([userId])
   @@map("wishlists")
+}
+
+model Coupon {
+  id           String       @id @default(uuid())
+  code         String       @unique
+  description  String?
+  type         CouponType   @default(PRODUCT_DISCOUNT)
+  discountType DiscountType @default(PERCENT)
+  value        Int          @default(0)
+  maxDiscount  Int?
+  minOrder     Int          @default(0)
+  usageLimit   Int?
+  usedCount    Int          @default(0)
+  perUserLimit Int          @default(1)
+  startAt      DateTime?
+  endAt        DateTime?
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  userCoupons UserCoupon[]
+
+  @@map("coupons")
+}
+
+model UserCoupon {
+  id       String    @id @default(uuid())
+  userId   String
+  couponId String
+  savedAt  DateTime  @default(now())
+  usedAt   DateTime?
+  orderId  String?
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, couponId])
+  @@index([userId])
+  @@map("user_coupons")
+}
+
+model Promotion {
+  id           String         @id @default(uuid())
+  name         String
+  description  String?
+  bannerImage  String?
+  linkUrl      String?
+  discountType DiscountType   @default(PERCENT)
+  value        Int            @default(0)
+  maxDiscount  Int?
+  scope        PromotionScope @default(ALL)
+  priority     Int            @default(0)
+  startAt      DateTime?
+  endAt        DateTime?
+  isActive     Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  products   PromotionProduct[]
+  categories PromotionCategory[]
+
+  @@map("promotions")
+}
+
+model PromotionProduct {
+  promotionId String
+  productId   String
+  promotion   Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([promotionId, productId])
+  @@map("promotion_products")
+}
+
+model PromotionCategory {
+  promotionId String
+  categoryId  String
+  promotion   Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  category    Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([promotionId, categoryId])
+  @@map("promotion_categories")
+}
+
+model Notification {
+  id        String               @id @default(uuid())
+  title     String
+  body      String
+  type      NotificationType     @default(SYSTEM)
+  audience  NotificationAudience @default(ALL)
+  userId    String?
+  linkUrl   String?
+  createdAt DateTime             @default(now())
+
+  user  User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reads NotificationRead[]
+
+  @@index([audience, createdAt])
+  @@index([userId])
+  @@map("notifications")
+}
+
+model NotificationRead {
+  id             String   @id @default(uuid())
+  userId         String
+  notificationId String
+  readAt         DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, notificationId])
+  @@index([userId])
+  @@map("notification_reads")
 }
