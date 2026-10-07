@@ -5,6 +5,7 @@ import { Boxes, ImageIcon, Layers } from 'lucide-react';
 import { formatVnd } from '@/shared/lib/format';
 import type { ProductListItem } from '../types';
 import { CompareButton } from './compare-button';
+import { WishlistButton } from '@/features/wishlist/components/wishlist-button';
 
 export function ProductCard({ product }: { product: ProductListItem }) {
     const img = product.images[0]?.imageUrl ?? null;
@@ -52,6 +53,7 @@ export function ProductCard({ product }: { product: ProductListItem }) {
                     </div>
                 )}
                 <CompareButton productId={product.id} categoryId={product.category?.id ?? ''} className="absolute right-2 top-2 z-10" />
+                <WishlistButton productId={product.id} className="absolute right-2 top-11 z-10" />
             </div>
             <div className="flex flex-1 flex-col p-3">
                 {product.brand && (

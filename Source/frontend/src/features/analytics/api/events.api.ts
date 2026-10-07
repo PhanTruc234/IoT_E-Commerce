@@ -26,6 +26,16 @@ export interface Analytics {
         name: string;
         views: number
     }[];
+    topAddToCart: {
+        productId: string;
+        name: string;
+        count: number
+    }[];
+    topOrdered: {
+        productId: string;
+        name: string;
+        quantity: number
+    }[];
     topSearches: {
         keyword: string;
         count: number

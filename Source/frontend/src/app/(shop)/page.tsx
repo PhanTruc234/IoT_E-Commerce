@@ -104,10 +104,10 @@ export default function HomePage() {
                             </div>
                             <div className="grid gap-3 sm:grid-cols-3">
                                 <a href="tel:19001234" className="flex items-center gap-2 rounded-xl bg-white/10 px-4 py-3 text-sm font-medium transition hover:bg-white/20">
-                                    <Phone className="h-5 w-5" /> 1900 1234
+                                    <Phone className="h-5 w-5" /> 0123456789
                                 </a>
-                                <a href="mailto:hotro@tmdtiot.vn" className="flex items-center gap-2 rounded-xl bg-white/10 px-4 py-3 text-sm font-medium transition hover:bg-white/20">
-                                    <Mail className="h-5 w-5" /> hotro@tmdtiot.vn
+                                <a href="mailto:support@iotech.com" className="flex items-center gap-2 rounded-xl bg-white/10 px-4 py-3 text-sm font-medium transition hover:bg-white/20">
+                                    <Mail className="h-5 w-5" /> support@iotech.com
                                 </a>
                                 <span className="flex items-center gap-2 rounded-xl bg-white/10 px-4 py-3 text-sm font-medium">
                                     <Clock className="h-5 w-5" /> 8:00 – 21:00

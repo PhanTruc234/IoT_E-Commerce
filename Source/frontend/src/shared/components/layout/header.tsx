@@ -23,7 +23,7 @@ export function Header() {
 
                 <nav className="ml-auto flex items-center gap-1 sm:gap-2">
                     <Link
-                        href="/favorites"
+                        href="/wishlist"
                         aria-label="Yêu thích"
                         className="rounded-lg p-2 text-gray-600 transition hover:bg-gray-100 hover:text-blue-600"
                     >

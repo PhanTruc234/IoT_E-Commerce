@@ -15,7 +15,6 @@ const DOT: Record<OrderStatus, string> = {
 export function OrderTimeline({ history }: { history: OrderStatusHistory[] }) {
     if (!history?.length) return null;
     const user = useAuthStore((s) => s.user);
-    console.log(">>> user", user)
     return (
         <ol className="space-y-0">
             {history.map((h, i) => {

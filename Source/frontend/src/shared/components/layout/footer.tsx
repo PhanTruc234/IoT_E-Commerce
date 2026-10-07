@@ -62,9 +62,9 @@ export function Footer() {
                 <div>
                     <h3 className="text-sm font-semibold text-gray-900">Liên hệ</h3>
                     <ul className="mt-3 space-y-2 text-sm text-gray-500">
-                        <li className="flex items-center gap-2"><MapPin className="h-4 w-4 shrink-0" /> TP. Hồ Chí Minh</li>
-                        <li className="flex items-center gap-2"><Phone className="h-4 w-4 shrink-0" /> 0123 456 789</li>
-                        <li className="flex items-center gap-2"><Mail className="h-4 w-4 shrink-0" /> support@tmdt-iot.local</li>
+                        <li className="flex items-center gap-2"><MapPin className="h-4 w-4 shrink-0" /> TP.Hà Nội</li>
+                        <li className="flex items-center gap-2"><Phone className="h-4 w-4 shrink-0" /> 0123456789</li>
+                        <li className="flex items-center gap-2"><Mail className="h-4 w-4 shrink-0" /> support@iotech.com</li>
                     </ul>
                 </div>
             </div>

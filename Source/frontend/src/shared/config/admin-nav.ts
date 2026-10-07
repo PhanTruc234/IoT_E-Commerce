@@ -1,7 +1,7 @@
 import {
     BarChart3, Barcode, FolderTree, Headset, LayoutDashboard, LifeBuoy, MessageCircleQuestion,
     MessageSquareText,
-    Package, ScrollText, ShieldCheck, ShoppingCart, Tags, Users, type LucideIcon,
+    Package, ScrollText, ShieldCheck, ShoppingCart, Tags, Truck, Users, type LucideIcon,
 } from 'lucide-react';
 
 export interface AdminNavItem { label: string; href: string; icon: LucideIcon }
@@ -14,7 +14,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     { label: 'Đơn hàng', href: '/admin/orders', icon: ShoppingCart },
     { label: 'Người dùng', href: '/admin/users', icon: Users },
     { label: 'Serial', href: '/admin/serials', icon: Barcode },
-    // { label: 'Bảo hành', href: '/admin/warranties', icon: ShieldCheck },
+    { label: 'Vận chuyển', href: '/admin/shipping', icon: Truck },
     { label: 'Hỏi đáp', href: '/admin/questions', icon: MessageCircleQuestion },
     { label: 'Đánh giá', href: '/admin/reviews', icon: MessageSquareText },
     { label: 'Hỗ trợ', href: '/admin/support', icon: Headset },

@@ -28,7 +28,6 @@ function OrderView() {
     const sp = useSearchParams();
     const payment = sp.get('payment');
     const { data: order, isLoading, isError, error } = useOrder(id);
-    console.log(">>> order", order)
     const cancel = useCancelMyOrder();
     const repay = useRepayOrder();
     const [confirming, setConfirming] = useState(false);

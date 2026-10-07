@@ -5,6 +5,7 @@ export interface CreateOrderBody {
     recipientName: string;
     phone: string;
     address: string;
+    province?: string;
     note?: string;
     paymentMethod: PaymentMethod;
 }

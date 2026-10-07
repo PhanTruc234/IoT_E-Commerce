@@ -15,10 +15,14 @@ import { useCart } from '@/features/cart/hooks/use-cart';
 import { useCreateOrder } from '@/features/orders/hooks/use-orders';
 import { useAuthStore } from '@/features/auth/store/auth.store';
 import { PolicyModal } from '@/features/legal/components/policy-modal';
+import { PROVINCES } from '@/shared/config/provinces';
+import { useShippingConfig } from '@/features/shipping/hooks/use-shipping';
+import { calcShippingFee } from '@/features/shipping/api/shipping.api';
 
 const schema = z.object({
     recipientName: z.string().min(2, 'Nhập họ tên').max(100),
     phone: z.string().regex(/^(0|\+84)\d{8,10}$/, 'Số điện thoại không hợp lệ'),
+    province: z.string().min(1, 'Chọn tỉnh/thành'),
     address: z.string().min(5, 'Nhập địa chỉ').max(255),
     note: z.string().max(500).optional(),
     paymentMethod: z.enum(['COD', 'VNPAY']),
@@ -33,13 +37,15 @@ export default function CheckoutPage() {
     const [agreed, setAgreed] = useState(false);
     const [showTerms, setShowTerms] = useState(false);
     const { data: cart, isLoading } = useCart();
+    const { data: shipConfig } = useShippingConfig();
     const create = useCreateOrder();
 
     const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormValues>({
         resolver: zodResolver(schema),
-        defaultValues: { recipientName: '', phone: '', address: '', note: '', paymentMethod: 'COD' },
+        defaultValues: { recipientName: '', phone: '', province: '', address: '', note: '', paymentMethod: 'COD' },
     });
     const method = watch('paymentMethod');
+    const province = watch('province');
 
     useEffect(() => {
         if (authStatus === 'unauthenticated') router.replace('/login');
@@ -71,6 +77,10 @@ export default function CheckoutPage() {
         );
     }
 
+    const shippingFee = calcShippingFee(shipConfig, cart.subtotal, province);
+    const freeByThreshold = shipConfig ? cart.subtotal >= shipConfig.freeShipFrom : false;
+    const total = cart.subtotal + (shippingFee ?? 0);
+
     return (
         <form onSubmit={handleSubmit(onSubmit)} className="mx-auto max-w-6xl px-4 py-8">
             <h1 className="mb-6 text-2xl font-bold text-gray-900">Thanh toán</h1>
@@ -88,8 +98,17 @@ export default function CheckoutPage() {
                             </Field>
                         </div>
                         <div className="mt-4">
+                            <Field label="Tỉnh/Thành" error={errors.province?.message}>
+                                <select {...register('province')}
+                                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                                    <option value="">— Chọn tỉnh/thành —</option>
+                                    {PROVINCES.map((p) => <option key={p} value={p}>{p}</option>)}
+                                </select>
+                            </Field>
+                        </div>
+                        <div className="mt-4">
                             <Field label="Địa chỉ nhận hàng" error={errors.address?.message}>
-                                <Input {...register('address')} placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/TP" />
+                                <Input {...register('address')} placeholder="Số nhà, đường, phường/xã, quận/huyện" />
                             </Field>
                         </div>
                         <div className="mt-4">
@@ -139,10 +158,20 @@ export default function CheckoutPage() {
                         </ul>
                         <div className="mt-4 space-y-1.5 border-t border-gray-100 pt-4 text-sm">
                             <div className="flex justify-between text-gray-600"><span>Tạm tính</span><span>{formatVnd(cart.subtotal)}</span></div>
-                            <div className="flex justify-between text-gray-600"><span>Phí vận chuyển</span><span>{cart.subtotal >= 500000 ? 'Miễn phí' : formatVnd(30000)}</span></div>
+                            <div className="flex justify-between text-gray-600">
+                                <span>Phí vận chuyển</span>
+                                <span>
+                                    {shippingFee == null ? <span className="text-gray-400">Chọn tỉnh/thành</span>
+                                        : shippingFee === 0 ? <span className="font-medium text-green-600">Miễn phí</span>
+                                            : formatVnd(shippingFee)}
+                                </span>
+                            </div>
+                            {freeByThreshold && (
+                                <p className="text-xs text-green-600">🎉 Đơn ≥ {formatVnd(shipConfig!.freeShipFrom)} được miễn phí vận chuyển</p>
+                            )}
                             <div className="flex justify-between pt-1 text-base font-bold text-gray-900">
                                 <span>Tổng cộng</span>
-                                <span className="text-blue-600">{formatVnd(cart.subtotal + (cart.subtotal >= 500000 ? 0 : 30000))}</span>
+                                <span className="text-blue-600">{formatVnd(total)}</span>
                             </div>
                         </div>
                         <label className="mt-4 flex items-start gap-2 text-sm text-gray-600">

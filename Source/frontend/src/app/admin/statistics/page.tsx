@@ -128,7 +128,12 @@ export default function AdminStatisticsPage() {
                             </div>
 
                             <div className="grid gap-4 lg:grid-cols-3">
-                                <RankList title="SP xem nhiều nhất" rows={data.topProducts.map((p) => ({ label: p.name, value: p.views }))} />
+                                <RankList title="Top 10 SP xem nhiều nhất" rows={data.topProducts.map((p) => ({ label: p.name, value: p.views }))} />
+                                <RankList title="Top 10 SP thêm giỏ nhiều nhất" rows={data.topAddToCart.map((p) => ({ label: p.name, value: p.count }))} />
+                                <RankList title="Top 10 SP đặt mua nhiều nhất" rows={data.topOrdered.map((p) => ({ label: p.name, value: p.quantity }))} />
+                            </div>
+
+                            <div className="grid gap-4 lg:grid-cols-2">
                                 <RankList title="Từ khoá tìm nhiều nhất" rows={data.topSearches.map((s) => ({ label: s.keyword, value: s.count }))} />
                                 <RankList title="Danh mục được xem nhiều" rows={data.topCategories.map((c) => ({ label: c.name, value: c.views }))} />
                             </div>
