@@ -3,6 +3,7 @@ import { ArrowRight, BadgeCheck, Clock, Headphones, Mail, Package, Phone, Rotate
 import { CATEGORIES } from '@/shared/config/navigation';
 import { FeaturedCategories } from '@/features/products/components/featured-categories';
 import { ProductRail } from '@/features/products/components/product-rail';
+import { PromoHero } from '@/features/promotions/components/promo-hero';
 
 const TRUST = [
     { icon: Truck, title: 'Giao hàng toàn quốc', desc: 'Nhanh chóng, đóng gói an toàn' },
@@ -14,6 +15,7 @@ const TRUST = [
 export default function HomePage() {
     return (
         <>
+            <PromoHero />
             <section className="border-b border-gray-100 bg-linear-to-br from-blue-600 to-indigo-700">
                 <div className="mx-auto grid max-w-7xl items-center gap-8 px-4 py-16 md:grid-cols-2 md:py-24">
                     <div className="text-white">

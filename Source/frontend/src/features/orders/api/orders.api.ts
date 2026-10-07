@@ -7,6 +7,8 @@ export interface CreateOrderBody {
     address: string;
     province?: string;
     note?: string;
+    productCouponCode?: string;
+    shippingCouponCode?: string;
     paymentMethod: PaymentMethod;
 }
 export interface CreateOrderResult {

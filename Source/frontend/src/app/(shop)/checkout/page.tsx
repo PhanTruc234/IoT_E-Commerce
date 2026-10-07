@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Loader2, Truck, Wallet } from 'lucide-react';
+import { Loader2, Ticket, Truck, Wallet } from 'lucide-react';
 import { Field } from '@/shared/ui/field';
 import { Input } from '@/shared/ui/input';
 import { formatVnd } from '@/shared/lib/format';
@@ -18,6 +18,7 @@ import { PolicyModal } from '@/features/legal/components/policy-modal';
 import { PROVINCES } from '@/shared/config/provinces';
 import { useShippingConfig } from '@/features/shipping/hooks/use-shipping';
 import { calcShippingFee } from '@/features/shipping/api/shipping.api';
+import { useCouponQuote, useMyCoupons } from '@/features/coupons/hooks/use-coupons';
 
 const schema = z.object({
     recipientName: z.string().min(2, 'Nhập họ tên').max(100),
@@ -46,7 +47,9 @@ export default function CheckoutPage() {
     });
     const method = watch('paymentMethod');
     const province = watch('province');
-
+    const [productCode, setProductCode] = useState('');
+    const [shippingCode, setShippingCode] = useState('');
+    const { data: myCoupons } = useMyCoupons();
     useEffect(() => {
         if (authStatus === 'unauthenticated') router.replace('/login');
     }, [authStatus, router]);
@@ -59,12 +62,15 @@ export default function CheckoutPage() {
     }, [user, setValue]);
 
     const onSubmit = (v: FormValues) => {
-        create.mutate(v, {
-            onSuccess: ({ order, paymentUrl }) => {
-                if (paymentUrl) window.location.href = paymentUrl;
-                else router.push(`/orders/${order.id}`);
+        create.mutate(
+            { ...v, productCouponCode: productCode || undefined, shippingCouponCode: shippingCode || undefined },
+            {
+                onSuccess: ({ order, paymentUrl }) => {
+                    if (paymentUrl) window.location.href = paymentUrl;
+                    else router.push(`/orders/${order.id}`);
+                },
             },
-        });
+        );
     };
 
     if (isLoading) return <div className="mx-auto max-w-6xl px-4 py-10 text-sm text-gray-400">Đang tải…</div>;
@@ -78,6 +84,16 @@ export default function CheckoutPage() {
     }
 
     const shippingFee = calcShippingFee(shipConfig, cart.subtotal, province);
+    const { data: quote } = useCouponQuote(
+        { subtotal: cart.subtotal, shippingFee: shippingFee ?? 0, productCode: productCode || undefined, shippingCode: shippingCode || undefined },
+        !!cart,
+    );
+    const discountAmount = quote?.discountAmount ?? 0;
+    const shippingDiscountAmt = quote?.shippingDiscount ?? 0;
+    const finalTotal = Math.max(0, cart.subtotal + (shippingFee ?? 0) - discountAmount - shippingDiscountAmt);
+
+    const productVouchers = (myCoupons ?? []).filter((c) => c.type === 'PRODUCT_DISCOUNT' && c.status === 'ACTIVE');
+    const shipVouchers = (myCoupons ?? []).filter((c) => c.type === 'FREE_SHIPPING' && c.status === 'ACTIVE');
     const freeByThreshold = shipConfig ? cart.subtotal >= shipConfig.freeShipFrom : false;
     const total = cart.subtotal + (shippingFee ?? 0);
 
@@ -156,6 +172,49 @@ export default function CheckoutPage() {
                                 </li>
                             ))}
                         </ul>
+                        <div className="mb-4 space-y-3 border-t border-gray-100 pt-4">
+                            <p className="flex items-center gap-2 text-sm font-semibold text-gray-800"><Ticket className="h-4 w-4 text-blue-600" /> Mã giảm giá</p>
+                            <div>
+                                <div className="flex gap-2">
+                                    <input value={productCode} onChange={(e) => setProductCode(e.target.value.toUpperCase())}
+                                        placeholder="Mã giảm tiền hàng"
+                                        className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm uppercase outline-none focus:border-blue-500" />
+                                    {productCode && <button type="button" onClick={() => setProductCode('')} className="text-xs text-gray-400 hover:text-red-500">Bỏ</button>}
+                                </div>
+                                {productVouchers.length > 0 && (
+                                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                        {productVouchers.map((c) => (
+                                            <button key={c.id} type="button" onClick={() => setProductCode(c.code)}
+                                                className={`rounded border px-2 py-0.5 text-xs ${productCode === c.code ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 text-gray-600'}`}>
+                                                {c.code}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                                {quote?.errors.product && <p className="mt-1 text-xs text-red-500">{quote.errors.product}</p>}
+                            </div>
+
+                            {/* Mã miễn phí vận chuyển */}
+                            <div>
+                                <div className="flex gap-2">
+                                    <input value={shippingCode} onChange={(e) => setShippingCode(e.target.value.toUpperCase())}
+                                        placeholder="Mã miễn phí vận chuyển"
+                                        className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm uppercase outline-none focus:border-blue-500" />
+                                    {shippingCode && <button type="button" onClick={() => setShippingCode('')} className="text-xs text-gray-400 hover:text-red-500">Bỏ</button>}
+                                </div>
+                                {shipVouchers.length > 0 && (
+                                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                        {shipVouchers.map((c) => (
+                                            <button key={c.id} type="button" onClick={() => setShippingCode(c.code)}
+                                                className={`rounded border px-2 py-0.5 text-xs ${shippingCode === c.code ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 text-gray-600'}`}>
+                                                {c.code}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                                {quote?.errors.shipping && <p className="mt-1 text-xs text-red-500">{quote.errors.shipping}</p>}
+                            </div>
+                        </div>
                         <div className="mt-4 space-y-1.5 border-t border-gray-100 pt-4 text-sm">
                             <div className="flex justify-between text-gray-600"><span>Tạm tính</span><span>{formatVnd(cart.subtotal)}</span></div>
                             <div className="flex justify-between text-gray-600">
@@ -167,11 +226,17 @@ export default function CheckoutPage() {
                                 </span>
                             </div>
                             {freeByThreshold && (
-                                <p className="text-xs text-green-600">🎉 Đơn ≥ {formatVnd(shipConfig!.freeShipFrom)} được miễn phí vận chuyển</p>
+                                <p className="text-xs text-green-600">Đơn ≥ {formatVnd(shipConfig!.freeShipFrom)} được miễn phí vận chuyển</p>
+                            )}
+                            {discountAmount > 0 && (
+                                <div className="flex justify-between text-green-600"><span>Giảm giá</span><span>-{formatVnd(discountAmount)}</span></div>
+                            )}
+                            {shippingDiscountAmt > 0 && (
+                                <div className="flex justify-between text-green-600"><span>Giảm phí ship</span><span>-{formatVnd(shippingDiscountAmt)}</span></div>
                             )}
                             <div className="flex justify-between pt-1 text-base font-bold text-gray-900">
                                 <span>Tổng cộng</span>
-                                <span className="text-blue-600">{formatVnd(total)}</span>
+                                <span className="text-blue-600">{formatVnd(finalTotal)}</span>
                             </div>
                         </div>
                         <label className="mt-4 flex items-start gap-2 text-sm text-gray-600">
