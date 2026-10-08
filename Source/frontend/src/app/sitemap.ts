@@ -8,7 +8,11 @@ interface ProductRow {
 
 async function fetchProducts(): Promise<ProductRow[]> {
     try {
-        const res = await fetch(`${env.apiUrl}/products?limit=100&sort=newest`, { next: { revalidate: 3600 } });
+        // Timeout 8s để không treo build khi backend ngủ / chưa sẵn sàng
+        const res = await fetch(`${env.apiUrl}/products?limit=100&sort=newest`, {
+            next: { revalidate: 3600 },
+            signal: AbortSignal.timeout(8000),
+        });
         if (!res.ok) {
             return [];
         }
@@ -18,6 +22,9 @@ async function fetchProducts(): Promise<ProductRow[]> {
         return [];
     }
 }
+
+// Sitemap tái tạo mỗi giờ (ISR) — khi backend thức sẽ tự thêm đủ sản phẩm
+export const revalidate = 3600;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const base = env.siteUrl;
