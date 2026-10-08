@@ -25,6 +25,7 @@ import { WishlistModule } from './app/wishlist/wishlist.module';
 import { CouponsModule } from './app/coupons/coupons.module';
 import { PromotionsModule } from './app/promotions/promotions.module';
 import { NotificationsModule } from './app/notifications/notifications.module';
+import { HealthModule } from './app/health/health.module';
 
 @Module({
   imports: [
@@ -53,7 +54,8 @@ import { NotificationsModule } from './app/notifications/notifications.module';
     WishlistModule,
     CouponsModule,
     PromotionsModule,
-    NotificationsModule
+    NotificationsModule,
+    HealthModule
   ],
 })
 export class AppModule { }
