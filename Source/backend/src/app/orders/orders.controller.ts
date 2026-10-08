@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../core/decorators/current-user.decorator';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { CreateDirectOrderDto } from './dto/create-direct-order.dto';
 
 @ApiTags('Orders')
 @ApiBearerAuth()
@@ -14,6 +15,12 @@ export class OrdersController {
     @ApiOperation({ summary: 'Đặt hàng từ giỏ' })
     create(@CurrentUser('id') userId: string, @Body() dto: CreateOrderDto, @Ip() ip: string) {
         return this.service.createFromCart(userId, dto, ip);
+    }
+
+    @Post('direct')
+    @ApiOperation({ summary: 'Mua ngay 1 sản phẩm (không qua giỏ hàng)' })
+    createDirect(@CurrentUser('id') userId: string, @Body() dto: CreateDirectOrderDto, @Ip() ip: string) {
+        return this.service.createDirect(userId, dto, ip);
     }
 
     @Get()

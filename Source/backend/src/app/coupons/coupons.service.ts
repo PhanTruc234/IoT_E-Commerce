@@ -28,6 +28,11 @@ export class CouponsService {
         if (coupon.endAt && now > coupon.endAt) return 'Mã đã hết hạn';
         if (subtotal < coupon.minOrder) return `Đơn tối thiểu ${coupon.minOrder.toLocaleString('vi-VN')}đ`;
         if (coupon.usageLimit != null && coupon.usedCount >= coupon.usageLimit) return 'Mã đã hết lượt';
+        // Flash sale: chỉ người đã săn (có UserCoupon) mới được dùng → đảm bảo đúng số lượng phát
+        if (coupon.isFlashSale) {
+            const owned = await this.prisma.userCoupon.findUnique({ where: { userId_couponId: { userId, couponId: coupon.id } } });
+            if (!owned) return 'Mã này cần được săn trong khung giờ trước khi dùng';
+        }
         const usedByUser = await this.prisma.userCoupon.count({ where: { userId, couponId: coupon.id, usedAt: { not: null } } });
         if (usedByUser >= coupon.perUserLimit) return 'Bạn đã dùng hết lượt cho mã này';
         return null;
@@ -89,6 +94,7 @@ export class CouponsService {
         const c = await this.prisma.coupon.findUnique({ where: { code: this.norm(code) } });
         if (!c) throw new NotFoundException('Mã không tồn tại');
         if (!c.isActive) throw new BadRequestException('Mã đã ngừng áp dụng');
+        if (c.isFlashSale) throw new BadRequestException('Mã săn giới hạn — vui lòng vào trang "Săn mã" để lấy');
         if (c.endAt && new Date() > c.endAt) throw new BadRequestException('Mã đã hết hạn');
         await this.prisma.userCoupon.upsert({
             where: { userId_couponId: { userId, couponId: c.id } },
@@ -117,12 +123,71 @@ export class CouponsService {
         });
     }
 
+    // ----- Flash sale (săn mã theo khung giờ) -----
+    async flashList(userId: string) {
+        const now = new Date();
+        const coupons = await this.prisma.coupon.findMany({
+            where: { isFlashSale: true, isActive: true, OR: [{ claimEndAt: null }, { claimEndAt: { gte: now } }] },
+            orderBy: { claimStartAt: 'asc' },
+        });
+        const mine = await this.prisma.userCoupon.findMany({
+            where: { userId, couponId: { in: coupons.map((c) => c.id) } },
+            select: { couponId: true },
+        });
+        const claimedSet = new Set(mine.map((m) => m.couponId));
+        return coupons.map((c) => {
+            const remaining = c.claimLimit != null ? Math.max(0, c.claimLimit - c.claimedCount) : null;
+            let status: 'UPCOMING' | 'LIVE' | 'SOLD_OUT';
+            if (c.claimStartAt && now < c.claimStartAt) status = 'UPCOMING';
+            else if (remaining != null && remaining <= 0) status = 'SOLD_OUT';
+            else status = 'LIVE';
+            const mine = claimedSet.has(c.id);
+            return {
+                id: c.id, code: mine ? c.code : null, description: c.description, type: c.type,
+                discountType: c.discountType, value: c.value, maxDiscount: c.maxDiscount, minOrder: c.minOrder,
+                claimStartAt: c.claimStartAt, claimEndAt: c.claimEndAt, endAt: c.endAt,
+                claimLimit: c.claimLimit, claimedCount: c.claimedCount, remaining,
+                status, claimed: mine,
+            };
+        });
+    }
+
+    async claim(userId: string, couponId: string) {
+        const c = await this.prisma.coupon.findUnique({ where: { id: couponId } });
+        if (!c || !c.isFlashSale) throw new NotFoundException('Mã săn không tồn tại');
+        if (!c.isActive) throw new BadRequestException('Mã đã ngừng áp dụng');
+        const now = new Date();
+        if (c.claimStartAt && now < c.claimStartAt) throw new BadRequestException('Chưa tới giờ săn mã');
+        if (c.claimEndAt && now > c.claimEndAt) throw new BadRequestException('Đã hết giờ săn mã');
+
+        const existing = await this.prisma.userCoupon.findUnique({ where: { userId_couponId: { userId, couponId } } });
+        if (existing) throw new BadRequestException('Bạn đã lấy mã này rồi');
+
+        try {
+            await this.prisma.$transaction(async (tx) => {
+                const upd = await tx.coupon.updateMany({
+                    where: { id: couponId, ...(c.claimLimit != null ? { claimedCount: { lt: c.claimLimit } } : {}) },
+                    data: { claimedCount: { increment: 1 } },
+                });
+                if (upd.count === 0) throw new BadRequestException('Mã đã được săn hết');
+                await tx.userCoupon.create({ data: { userId, couponId } });
+            });
+        } catch (e) {
+            if (e instanceof BadRequestException) throw e;
+            if ((e as { code?: string })?.code === 'P2002') throw new BadRequestException('Bạn đã lấy mã này rồi');
+            throw e;
+        }
+        return { claimed: true };
+    }
+
     private toData(dto: CreateCouponDto | UpdateCouponDto) {
         return {
             ...dto,
             code: dto.code ? this.norm(dto.code) : undefined,
             startAt: dto.startAt ? new Date(dto.startAt) : undefined,
             endAt: dto.endAt ? new Date(dto.endAt) : undefined,
+            claimStartAt: dto.claimStartAt ? new Date(dto.claimStartAt) : undefined,
+            claimEndAt: dto.claimEndAt ? new Date(dto.claimEndAt) : undefined,
         } as any;
     }
 

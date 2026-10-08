@@ -22,6 +22,9 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { SupportModule } from './app/support/support.module';
 import { ShippingModule } from './app/shipping/shipping.module';
 import { WishlistModule } from './app/wishlist/wishlist.module';
+import { CouponsModule } from './app/coupons/coupons.module';
+import { PromotionsModule } from './app/promotions/promotions.module';
+import { NotificationsModule } from './app/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -48,6 +51,9 @@ import { WishlistModule } from './app/wishlist/wishlist.module';
     SupportModule,
     ShippingModule,
     WishlistModule,
+    CouponsModule,
+    PromotionsModule,
+    NotificationsModule
   ],
 })
 export class AppModule { }

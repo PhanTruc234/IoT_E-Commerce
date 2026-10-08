@@ -39,4 +39,20 @@ export class CreateCouponDto {
 
     @ApiPropertyOptional() @IsOptional() @IsBoolean()
     isActive?: boolean;
+
+    @ApiPropertyOptional({ description: 'Bật chế độ săn mã theo khung giờ' })
+    @IsOptional() @IsBoolean()
+    isFlashSale?: boolean;
+
+    @ApiPropertyOptional({ description: 'Giờ bắt đầu cho săn mã' })
+    @IsOptional() @IsDateString()
+    claimStartAt?: string;
+
+    @ApiPropertyOptional({ description: 'Giờ kết thúc săn mã' })
+    @IsOptional() @IsDateString()
+    claimEndAt?: string;
+
+    @ApiPropertyOptional({ description: 'Số lượng mã phát trong khung giờ' })
+    @IsOptional() @IsInt() @Min(1)
+    claimLimit?: number;
 }

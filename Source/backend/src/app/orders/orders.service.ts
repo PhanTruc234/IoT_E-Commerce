@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { CreateDirectOrderDto } from './dto/create-direct-order.dto';
 import { VnpayService } from './vnpay.service';
 import { OrderListQueryDto } from './dto/order-list-query.dto';
 import { OrderStatus, Prisma } from '@prisma/client';
@@ -232,6 +233,112 @@ export class OrdersService {
             }
             return created;
         });
+        let paymentUrl: string | undefined;
+        if (order.paymentMethod === 'VNPAY') {
+            paymentUrl = this.vnpay.buildPaymentUrl({ code: order.code, amount: order.total, ip, orderInfo: `Thanh toán đơn ${order.code}` });
+        }
+        return { order, paymentUrl };
+    }
+    async createDirect(userId: string, dto: CreateDirectOrderDto, ip: string) {
+        const qty = dto.quantity;
+        const product = await this.prisma.product.findUnique({
+            where: { id: dto.productId },
+            select: {
+                id: true, name: true, price: true, salePrice: true, stockQuantity: true, status: true, type: true, categoryId: true,
+                images: { where: { isPrimary: true }, take: 1, select: { imageUrl: true } },
+            },
+        });
+        if (!product || product.status !== 'ACTIVE') {
+            throw new BadRequestException('Sản phẩm không còn được bán');
+        }
+
+        let variant: { id: string; price: number; salePrice: number | null; stockQuantity: number; imageUrl: string | null; isActive: boolean; options: { option: { value: string; attribute: { name: string } } }[] } | null = null;
+        if (dto.variantId) {
+            variant = await this.prisma.productVariant.findFirst({
+                where: { id: dto.variantId, productId: dto.productId },
+                select: {
+                    id: true, price: true, salePrice: true, stockQuantity: true, imageUrl: true, isActive: true,
+                    options: { select: { option: { select: { value: true, attribute: { select: { name: true } } } } } },
+                },
+            });
+            if (!variant || !variant.isActive) throw new BadRequestException('Phân loại không hợp lệ');
+        }
+
+        // Xác định tồn kho
+        let comboComps: { quantity: number; variantId: string | null; componentId: string }[] = [];
+        let stock: number;
+        if (variant) {
+            stock = variant.stockQuantity;
+        } else if (product.type === 'COMBO') {
+            const comps = await this.prisma.comboItem.findMany({
+                where: { comboId: product.id },
+                select: { quantity: true, variantId: true, productId: true, component: { select: { stockQuantity: true } }, variant: { select: { stockQuantity: true } } },
+            });
+            comboComps = comps.map((c) => ({ quantity: c.quantity, variantId: c.variantId, componentId: c.productId }));
+            stock = comps.length ? Math.min(...comps.map((c) => Math.floor((c.variant?.stockQuantity ?? c.component.stockQuantity) / c.quantity))) : 0;
+        } else {
+            stock = product.stockQuantity;
+        }
+        if (stock < qty) throw new BadRequestException(`"${product.name}" chỉ còn ${stock} sản phẩm`);
+
+        // Giá (áp khuyến mãi như luồng giỏ hàng)
+        const rules = await this.promotions.getActiveRules();
+        const baseUnit = variant ? (variant.salePrice ?? variant.price) : (product.salePrice ?? product.price);
+        const promoUnit = applyPromotions(rules, product.id, product.categoryId, variant ? variant.price : product.price);
+        const unitPrice = Math.min(baseUnit, promoUnit);
+        const variantLabel = variant ? variant.options.map((o) => `${o.option.attribute.name}: ${o.option.value}`).join(', ') : null;
+        const image = variant?.imageUrl ?? product.images[0]?.imageUrl ?? null;
+
+        const subtotal = unitPrice * qty;
+        const shippingFee = await this.shipping.computeFee(subtotal, dto.province);
+        const cp = await this.coupons.resolve(userId, subtotal, shippingFee, dto.productCouponCode, dto.shippingCouponCode);
+        if (cp.errors.product) throw new BadRequestException(`Mã giảm giá: ${cp.errors.product}`);
+        if (cp.errors.shipping) throw new BadRequestException(`Mã vận chuyển: ${cp.errors.shipping}`);
+        const discountAmount = cp.discountAmount;
+        const shippingDiscount = cp.shippingDiscount;
+        const total = Math.max(0, subtotal - discountAmount + (shippingFee - shippingDiscount));
+
+        const order = await this.prisma.$transaction(async (tx) => {
+            const created = await tx.order.create({
+                data: {
+                    code: this.genCode(),
+                    userId,
+                    recipientName: dto.recipientName,
+                    phone: dto.phone,
+                    address: dto.address,
+                    province: dto.province,
+                    note: dto.note,
+                    subtotal, shippingFee, total,
+                    discountAmount, shippingDiscount,
+                    productCouponCode: cp.productCoupon?.code ?? null,
+                    shippingCouponCode: cp.shippingCoupon?.code ?? null,
+                    status: 'PENDING',
+                    paymentMethod: dto.paymentMethod,
+                    paymentStatus: dto.paymentMethod === 'VNPAY' ? 'PENDING' : 'UNPAID',
+                    items: { create: [{ productId: product.id, variantId: dto.variantId ?? null, name: product.name, variantLabel, image, unitPrice, quantity: qty, lineTotal: subtotal }] },
+                },
+                include: { items: true },
+            });
+
+            // Trừ kho
+            if (variant) {
+                await tx.productVariant.update({ where: { id: variant.id }, data: { stockQuantity: { decrement: qty } } });
+            } else if (product.type === 'COMBO') {
+                for (const c of comboComps) {
+                    const dec = c.quantity * qty;
+                    if (c.variantId) await tx.productVariant.update({ where: { id: c.variantId }, data: { stockQuantity: { decrement: dec } } });
+                    else await tx.product.update({ where: { id: c.componentId }, data: { stockQuantity: { decrement: dec } } });
+                }
+            } else {
+                await tx.product.update({ where: { id: product.id }, data: { stockQuantity: { decrement: qty } } });
+            }
+            await tx.product.update({ where: { id: product.id }, data: { soldCount: { increment: qty } } });
+
+            if (cp.productCoupon) await this.coupons.markUsed(tx, cp.productCoupon.id, userId, created.id);
+            if (cp.shippingCoupon) await this.coupons.markUsed(tx, cp.shippingCoupon.id, userId, created.id);
+            return created;
+        });
+
         let paymentUrl: string | undefined;
         if (order.paymentMethod === 'VNPAY') {
             paymentUrl = this.vnpay.buildPaymentUrl({ code: order.code, amount: order.total, ip, orderInfo: `Thanh toán đơn ${order.code}` });

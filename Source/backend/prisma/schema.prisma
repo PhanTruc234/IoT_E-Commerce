@@ -681,6 +681,15 @@ model Coupon {
   startAt      DateTime?
   endAt        DateTime?
   isActive     Boolean      @default(true)
+
+  // Flash sale (săn mã theo khung giờ)
+  isFlashSale  Boolean      @default(false)
+  claimStartAt DateTime?
+  claimEndAt   DateTime?
+  claimLimit   Int?
+  claimedCount Int          @default(0)
+  announcedAt  DateTime?
+
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
@@ -696,6 +705,7 @@ model UserCoupon {
   savedAt  DateTime  @default(now())
   usedAt   DateTime?
   orderId  String?
+  expiryRemindedAt DateTime?
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)

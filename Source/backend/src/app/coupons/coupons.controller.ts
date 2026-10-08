@@ -32,6 +32,18 @@ export class CouponsController {
         return this.coupons.quote(userId, dto.subtotal, dto.shippingFee, dto.productCode, dto.shippingCode);
     }
 
+    @Get('flash')
+    @ApiOperation({ summary: 'Danh sách mã săn theo khung giờ (đang mở / sắp mở)' })
+    flash(@CurrentUser('id') userId: string) {
+        return this.coupons.flashList(userId);
+    }
+
+    @Post('claim')
+    @ApiOperation({ summary: 'Săn (lấy) 1 mã flash sale' })
+    claim(@CurrentUser('id') userId: string, @Body('couponId') couponId: string) {
+        return this.coupons.claim(userId, couponId);
+    }
+
     // ----- Admin -----
     @Roles(Role.ADMIN)
     @Get('admin')
