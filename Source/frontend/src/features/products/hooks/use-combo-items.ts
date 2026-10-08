@@ -1,6 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { comboItemsApi, type ComboItemInput } from '../api/combo-items.api';
+import { comboItemsApi } from '../api/combo-items.api';
+import type { ComboItemInput } from '../types';
 
 export function useComboItems(comboId: string) {
     return useQuery({
