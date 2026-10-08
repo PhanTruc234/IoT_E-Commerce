@@ -1,17 +1,39 @@
 'use client';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Boxes, ImageIcon, Layers } from 'lucide-react';
-import { formatVnd } from '@/shared/lib/format';
+import { useRouter } from 'next/navigation';
+import { Boxes, ImageIcon, Layers, Zap } from 'lucide-react';
 import type { ProductListItem } from '../types';
 import { CompareButton } from './compare-button';
 import { WishlistButton } from '@/features/wishlist/components/wishlist-button';
+import { ProductPrice } from '@/features/promotions/components/product-price';
+import { useAuthStore } from '@/features/auth/store/auth.store';
+import { useActivePromotions } from '@/features/promotions/hooks/use-promotions';
+import { effectivePrice } from '@/features/promotions/lib/pricing';
+import { useBuyNowStore } from '@/features/orders/store/buy-now.store';
 
 export function ProductCard({ product }: { product: ProductListItem }) {
+    const router = useRouter();
+    const authStatus = useAuthStore((s) => s.status);
+    const { data: promoRules } = useActivePromotions();
+    const setBuyNow = useBuyNowStore((s) => s.set);
     const img = product.images[0]?.imageUrl ?? null;
     const hasSale = product.salePrice != null && product.salePrice < product.price;
     const outOfStock = product.status === 'OUT_OF_STOCK' || product.stockQuantity <= 0;
     const discount = hasSale ? Math.round((1 - product.salePrice! / product.price) * 100) : 0;
+
+    const handleBuyNow = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (outOfStock) return;
+        if (authStatus !== 'authenticated') { router.push('/login'); return; }
+        // Sản phẩm có biến thể → vào trang chi tiết để chọn phân loại rồi mua
+        if (product.type === 'VARIABLE') { router.push(`/products/${product.slug}`); return; }
+        // Sản phẩm đơn giản / combo → mua trực tiếp (không đụng giỏ hàng)
+        const { final } = effectivePrice(promoRules ?? [], { id: product.id, price: product.price, salePrice: product.salePrice, categoryId: product.category?.id });
+        setBuyNow({ productId: product.id, quantity: 1, name: product.name, image: img, variantLabel: null, unitPrice: final });
+        router.push('/checkout?buynow=1');
+    };
 
     return (
         <Link
@@ -62,10 +84,18 @@ export function ProductCard({ product }: { product: ProductListItem }) {
                 <h3 className="mt-0.5 line-clamp-2 flex-1 text-sm font-medium text-gray-800 group-hover:text-blue-600">
                     {product.name}
                 </h3>
-                <div className="mt-2 flex items-baseline gap-2">
-                    <span className="text-base font-bold text-blue-600">{formatVnd(hasSale ? product.salePrice : product.price)}</span>
-                    {hasSale && <span className="text-xs text-gray-400 line-through">{formatVnd(product.price)}</span>}
+                <div className="mt-2">
+                    <ProductPrice product={{ id: product.id, price: product.price, salePrice: product.salePrice, categoryId: product.category?.id }} size="sm" />
                 </div>
+                <button
+                    type="button"
+                    onClick={handleBuyNow}
+                    disabled={outOfStock}
+                    className="mt-2 flex w-full items-center justify-center gap-1 rounded-lg bg-orange-500 py-1.5 text-xs font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                    <Zap className="h-3.5 w-3.5" />
+                    {outOfStock ? 'Hết hàng' : product.type === 'VARIABLE' ? 'Chọn & mua' : 'Mua ngay'}
+                </button>
             </div>
         </Link>
     );

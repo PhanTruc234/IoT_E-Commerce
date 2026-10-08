@@ -16,6 +16,10 @@ import { ProductCard } from './product-card';
 import { ProductQuestions } from '@/features/questions/components/product-questions';
 import { ProductReviews } from '@/features/reviews/components/product-reviews';
 import { track } from '@/features/analytics/api/events.api';
+import { ProductPrice } from '@/features/promotions/components/product-price';
+import { useActivePromotions } from '@/features/promotions/hooks/use-promotions';
+import { effectivePrice } from '@/features/promotions/lib/pricing';
+import { useBuyNowStore } from '@/features/orders/store/buy-now.store';
 
 export function ProductDetailView({ product }: { product: PublicProductDetail }) {
     const isVariable = product.type === 'VARIABLE';
@@ -47,21 +51,22 @@ export function ProductDetailView({ product }: { product: PublicProductDetail })
     const gallery = product.images;
     const mainImage = selectedVariant?.imageUrl ?? gallery[thumb]?.imageUrl ?? gallery[0]?.imageUrl ?? null;
 
-    let displayPrice: number;
-    let compareAt: number | null = null;
     let stock: number | null;
+    let basePrice: number;
+    let baseSale: number | null;
     if (isVariable) {
         if (selectedVariant) {
-            displayPrice = selectedVariant.salePrice ?? selectedVariant.price;
-            compareAt = selectedVariant.salePrice != null ? selectedVariant.price : null;
+            basePrice = selectedVariant.price;
+            baseSale = selectedVariant.salePrice ?? null;
             stock = selectedVariant.stockQuantity;
         } else {
-            displayPrice = priceRange?.min ?? product.price;
+            basePrice = priceRange?.min ?? product.price;
+            baseSale = null;
             stock = null;
         }
     } else {
-        displayPrice = product.salePrice ?? product.price;
-        compareAt = product.salePrice != null ? product.price : null;
+        basePrice = product.price;
+        baseSale = product.salePrice ?? null;
         stock = product.stockQuantity;
     }
 
@@ -69,6 +74,8 @@ export function ProductDetailView({ product }: { product: PublicProductDetail })
     const router = useRouter();
     const add = useAddToCart();
     const openCart = useCartUI((s) => s.setOpen);
+    const { data: promoRules } = useActivePromotions();
+    const setBuyNow = useBuyNowStore((s) => s.set);
     const authStatus = useAuthStore((s) => s.status);
 
     const variantOOS = isVariable && !!selectedVariant && selectedVariant.stockQuantity <= 0;
@@ -85,6 +92,17 @@ export function ProductDetailView({ product }: { product: PublicProductDetail })
             { productId: product.id, variantId: selectedVariant?.id, quantity: qty },
             { onSuccess: () => { track({ type: 'ADD_TO_CART', productId: product.id }); openCart(true); } },
         );
+    };
+    const handleBuyNow = () => {
+        if (authStatus !== 'authenticated') {
+            router.push('/login');
+            return;
+        }
+        if (cannotAdd) return;
+        const { final } = effectivePrice(promoRules ?? [], { id: product.id, price: basePrice, salePrice: baseSale, categoryId: product.category?.id });
+        const variantLabel = selectedVariant ? selectedVariant.options.map((o) => `${o.option.attribute.name}: ${o.option.value}`).join(', ') : null;
+        setBuyNow({ productId: product.id, variantId: selectedVariant?.id, quantity: qty, name: product.name, image: mainImage, variantLabel, unitPrice: final });
+        router.push('/checkout?buynow=1');
     };
     const lastTrackedProduct = useRef<string | null>(null);
     useEffect(() => {
@@ -134,10 +152,10 @@ export function ProductDetailView({ product }: { product: PublicProductDetail })
                         {isVariable && !selectedVariant && priceRange && priceRange.min !== priceRange.max ? (
                             <span className="text-3xl font-bold text-blue-600">{formatVnd(priceRange.min)} – {formatVnd(priceRange.max)}</span>
                         ) : (
-                            <>
-                                <span className="text-3xl font-bold text-blue-600">{formatVnd(displayPrice)}</span>
-                                {compareAt && <span className="text-lg text-gray-400 line-through">{formatVnd(compareAt)}</span>}
-                            </>
+                            <ProductPrice
+                                product={{ id: product.id, price: basePrice, salePrice: baseSale, categoryId: product.category?.id }}
+                                size="lg"
+                            />
                         )}
                     </div>
 
@@ -191,6 +209,14 @@ export function ProductDetailView({ product }: { product: PublicProductDetail })
                         >
                             <ShoppingCart className="h-5 w-5" />
                             {add.isPending ? 'Đang thêm…' : isVariable && !selectedVariant ? 'Chọn phân loại' : 'Thêm vào giỏ'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleBuyNow}
+                            disabled={cannotAdd}
+                            className="inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg bg-orange-500 px-6 py-3 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            {isVariable && !selectedVariant ? 'Chọn phân loại' : 'Mua ngay'}
                         </button>
                     </div>
                     {add.isError && <p className="mt-2 text-sm text-red-600">{getApiErrorMessage(add.error)}</p>}
