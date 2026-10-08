@@ -7,6 +7,7 @@ import { MobileMenu } from './mobile-menu';
 import { CategoryMenu } from './category-menu';
 import { CartButton } from '@/features/cart/components/cart-button';
 import logo from "../../../../public/IoTechNew.png"
+import { NotificationBell } from '@/features/notifications/components/notification-bell';
 export function Header() {
     return (
         <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/95 backdrop-blur">
@@ -30,6 +31,7 @@ export function Header() {
                         <Heart className="h-5 w-5" />
                     </Link>
                     <CartButton />
+                    <NotificationBell />
                     <div className="mx-1 hidden h-6 w-px bg-gray-200 sm:block" />
                     <UserNav />
                 </nav>
@@ -48,6 +50,9 @@ export function Header() {
                     </Link>
                     <Link href="/warranty" className="px-4 py-2.5 text-sm text-gray-600 transition hover:text-blue-600">
                         Bảo hành
+                    </Link>
+                    <Link href="/flash-sale" className="px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:text-red-700">
+                        ⚡ Săn mã
                     </Link>
                 </div>
             </div>

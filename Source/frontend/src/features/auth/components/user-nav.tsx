@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { LayoutDashboard, LogOut, ShoppingBag, User as UserIcon, UserCircle, LifeBuoy, Headset } from 'lucide-react';
+import { LayoutDashboard, LogOut, ShoppingBag, User as UserIcon, UserCircle, LifeBuoy, Headset, Ticket, Heart } from 'lucide-react';
 import { useAuthStore } from '../store/auth.store';
 import { useLogout } from '../hooks/use-logout';
 
@@ -63,6 +63,12 @@ export function UserNav() {
                     )}
                     <Link href="/orders" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
                         <ShoppingBag className="h-4 w-4 text-gray-400" /> Đơn hàng của tôi
+                    </Link>
+                    <Link href="/vouchers" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
+                        <Ticket className="h-4 w-4 text-gray-400" /> Ví mã giảm giá
+                    </Link>
+                    <Link href="/wishlist" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
+                        <Heart className="h-4 w-4 text-gray-400" /> Sản phẩm yêu thích
                     </Link>
                     <Link href="/account" onClick={() => setOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
                         <UserCircle className="h-4 w-4 text-gray-400" /> Thông tin cá nhân
