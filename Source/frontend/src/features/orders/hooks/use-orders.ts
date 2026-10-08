@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ordersApi, type CreateOrderBody } from '../api/orders.api';
+import { ordersApi, type CreateOrderBody, type DirectOrderBody } from '../api/orders.api';
 import { useAuthStore } from '@/features/auth/store/auth.store';
 import { AdminOrderParams, OrderStatus } from '../types';
 
@@ -10,6 +10,9 @@ export function useCreateOrder() {
         mutationFn: (body: CreateOrderBody) => ordersApi.create(body),
         onSuccess: () => qc.invalidateQueries({ queryKey: ['cart'] }),
     });
+}
+export function useCreateDirectOrder() {
+    return useMutation({ mutationFn: (body: DirectOrderBody) => ordersApi.createDirect(body) });
 }
 export function useRepayOrder() {
     return useMutation({ mutationFn: (id: string) => ordersApi.repay(id) });

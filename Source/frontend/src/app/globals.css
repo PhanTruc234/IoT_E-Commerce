@@ -24,3 +24,13 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+button:not(:disabled),
+[role="button"]:not(:disabled),
+label[for]:not(.cursor-default) {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}

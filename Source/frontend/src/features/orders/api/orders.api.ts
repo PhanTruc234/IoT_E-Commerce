@@ -11,6 +11,11 @@ export interface CreateOrderBody {
     shippingCouponCode?: string;
     paymentMethod: PaymentMethod;
 }
+export interface DirectOrderBody extends CreateOrderBody {
+    productId: string;
+    variantId?: string;
+    quantity: number;
+}
 export interface CreateOrderResult {
     order: Order;
     paymentUrl?: string;
@@ -18,6 +23,7 @@ export interface CreateOrderResult {
 
 export const ordersApi = {
     create: (body: CreateOrderBody) => apiClient.post<CreateOrderResult>('/orders', body).then((r) => r.data),
+    createDirect: (body: DirectOrderBody) => apiClient.post<CreateOrderResult>('/orders/direct', body).then((r) => r.data),
     list: () => apiClient.get<Order[]>('/orders').then((r) => r.data),
     get: (id: string) => apiClient.get<Order>(`/orders/${id}`).then((r) => r.data),
     repay: (id: string) => apiClient.post<{ paymentUrl: string }>(`/orders/${id}/repay`).then((r) => r.data),
