@@ -17,11 +17,23 @@ export interface CouponQuote {
 export interface AdminCoupon extends MyCoupon {
     usageLimit: number | null; usedCount: number; perUserLimit: number;
     startAt: string | null; isActive: boolean; createdAt: string;
+    isFlashSale: boolean; claimStartAt: string | null; claimEndAt: string | null;
+    claimLimit: number | null; claimedCount: number;
 }
 export interface CouponInput {
     code: string; description?: string; type: CouponType; discountType: DiscountType;
     value: number; maxDiscount?: number; minOrder?: number; usageLimit?: number;
     perUserLimit?: number; startAt?: string; endAt?: string; isActive?: boolean;
+    isFlashSale?: boolean; claimStartAt?: string; claimEndAt?: string; claimLimit?: number;
+}
+
+export type FlashStatus = 'UPCOMING' | 'LIVE' | 'SOLD_OUT';
+export interface FlashCoupon {
+    id: string; code: string | null; description: string | null; type: CouponType;
+    discountType: DiscountType; value: number; maxDiscount: number | null; minOrder: number;
+    claimStartAt: string | null; claimEndAt: string | null; endAt: string | null;
+    claimLimit: number | null; claimedCount: number; remaining: number | null;
+    status: FlashStatus; claimed: boolean;
 }
 
 export const couponsApi = {
@@ -29,6 +41,8 @@ export const couponsApi = {
     my: () => apiClient.get<MyCoupon[]>('/coupons/my').then((r) => r.data),
     quote: (body: { subtotal: number; shippingFee: number; productCode?: string; shippingCode?: string }) =>
         apiClient.post<CouponQuote>('/coupons/quote', body).then((r) => r.data),
+    flash: () => apiClient.get<FlashCoupon[]>('/coupons/flash').then((r) => r.data),
+    claim: (couponId: string) => apiClient.post('/coupons/claim', { couponId }).then((r) => r.data),
     adminList: () => apiClient.get<AdminCoupon[]>('/coupons/admin').then((r) => r.data),
     adminCreate: (body: CouponInput) => apiClient.post<AdminCoupon>('/coupons/admin', body).then((r) => r.data),
     adminUpdate: (id: string, body: Partial<CouponInput>) => apiClient.patch<AdminCoupon>(`/coupons/admin/${id}`, body).then((r) => r.data),

@@ -1,24 +1,26 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Loader2, Ticket, Truck, Wallet } from 'lucide-react';
+import { ChevronRight, Loader2, Ticket, Truck, Wallet, Zap } from 'lucide-react';
 import { Field } from '@/shared/ui/field';
 import { Input } from '@/shared/ui/input';
 import { formatVnd } from '@/shared/lib/format';
 import { getApiErrorMessage } from '@/shared/lib/api-error';
 import { useCart } from '@/features/cart/hooks/use-cart';
-import { useCreateOrder } from '@/features/orders/hooks/use-orders';
+import { useCreateOrder, useCreateDirectOrder } from '@/features/orders/hooks/use-orders';
+import { useBuyNowStore } from '@/features/orders/store/buy-now.store';
 import { useAuthStore } from '@/features/auth/store/auth.store';
 import { PolicyModal } from '@/features/legal/components/policy-modal';
 import { PROVINCES } from '@/shared/config/provinces';
 import { useShippingConfig } from '@/features/shipping/hooks/use-shipping';
 import { calcShippingFee } from '@/features/shipping/api/shipping.api';
-import { useCouponQuote, useMyCoupons } from '@/features/coupons/hooks/use-coupons';
+import { useCouponQuote } from '@/features/coupons/hooks/use-coupons';
+import { CouponPickerModal } from '@/features/coupons/components/coupon-picker-modal';
 
 const schema = z.object({
     recipientName: z.string().min(2, 'Nhập họ tên').max(100),
@@ -30,16 +32,28 @@ const schema = z.object({
 });
 type FormValues = z.infer<typeof schema>;
 
-export default function CheckoutPage() {
+interface LineItem { id: string; name: string; image: string | null; variantLabel: string | null; quantity: number; unitPrice: number; lineTotal: number }
+
+function CheckoutInner() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const isBuyNow = searchParams.get('buynow') === '1';
+
     const user = useAuthStore((s) => s.user);
     const authStatus = useAuthStore((s) => s.status);
 
     const [agreed, setAgreed] = useState(false);
     const [showTerms, setShowTerms] = useState(false);
+    const [productCode, setProductCode] = useState('');
+    const [shippingCode, setShippingCode] = useState('');
+    const [showCoupon, setShowCoupon] = useState(false);
+
     const { data: cart, isLoading } = useCart();
     const { data: shipConfig } = useShippingConfig();
     const create = useCreateOrder();
+    const createDirect = useCreateDirectOrder();
+    const buyNowItem = useBuyNowStore((s) => s.item);
+    const clearBuyNow = useBuyNowStore((s) => s.clear);
 
     const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormValues>({
         resolver: zodResolver(schema),
@@ -47,9 +61,7 @@ export default function CheckoutPage() {
     });
     const method = watch('paymentMethod');
     const province = watch('province');
-    const [productCode, setProductCode] = useState('');
-    const [shippingCode, setShippingCode] = useState('');
-    const { data: myCoupons } = useMyCoupons();
+
     useEffect(() => {
         if (authStatus === 'unauthenticated') router.replace('/login');
     }, [authStatus, router]);
@@ -61,45 +73,71 @@ export default function CheckoutPage() {
         }
     }, [user, setValue]);
 
-    const onSubmit = (v: FormValues) => {
-        create.mutate(
-            { ...v, productCouponCode: productCode || undefined, shippingCouponCode: shippingCode || undefined },
-            {
-                onSuccess: ({ order, paymentUrl }) => {
-                    if (paymentUrl) window.location.href = paymentUrl;
-                    else router.push(`/orders/${order.id}`);
-                },
-            },
-        );
-    };
+    // Nguồn dữ liệu: mua ngay (1 món) hoặc toàn bộ giỏ hàng
+    const items: LineItem[] = isBuyNow
+        ? (buyNowItem ? [{ id: 'buynow', name: buyNowItem.name, image: buyNowItem.image, variantLabel: buyNowItem.variantLabel, quantity: buyNowItem.quantity, unitPrice: buyNowItem.unitPrice, lineTotal: buyNowItem.unitPrice * buyNowItem.quantity }] : [])
+        : (cart?.items ?? []);
+    const itemCount = isBuyNow ? (buyNowItem?.quantity ?? 0) : (cart?.itemCount ?? 0);
+    const subtotal = items.reduce((s, i) => s + i.lineTotal, 0);
 
-    if (isLoading) return <div className="mx-auto max-w-6xl px-4 py-10 text-sm text-gray-400">Đang tải…</div>;
-    if (!cart || cart.items.length === 0) {
-        return (
-            <div className="mx-auto max-w-6xl px-4 py-16 text-center">
-                <p className="text-sm text-gray-500">Giỏ hàng trống.</p>
-                <Link href="/products" className="mt-3 inline-block text-sm text-blue-600 hover:underline">Mua sắm ngay →</Link>
-            </div>
-        );
-    }
-
-    const shippingFee = calcShippingFee(shipConfig, cart.subtotal, province);
+    const shippingFee = calcShippingFee(shipConfig, subtotal, province);
+    const sourceReady = isBuyNow ? !!buyNowItem : !!(cart && cart.items.length > 0);
     const { data: quote } = useCouponQuote(
-        { subtotal: cart.subtotal, shippingFee: shippingFee ?? 0, productCode: productCode || undefined, shippingCode: shippingCode || undefined },
-        !!cart,
+        { subtotal, shippingFee: shippingFee ?? 0, productCode: productCode || undefined, shippingCode: shippingCode || undefined },
+        sourceReady,
     );
     const discountAmount = quote?.discountAmount ?? 0;
     const shippingDiscountAmt = quote?.shippingDiscount ?? 0;
-    const finalTotal = Math.max(0, cart.subtotal + (shippingFee ?? 0) - discountAmount - shippingDiscountAmt);
+    const finalTotal = Math.max(0, subtotal + (shippingFee ?? 0) - discountAmount - shippingDiscountAmt);
+    const freeByThreshold = shipConfig ? subtotal >= shipConfig.freeShipFrom : false;
 
-    const productVouchers = (myCoupons ?? []).filter((c) => c.type === 'PRODUCT_DISCOUNT' && c.status === 'ACTIVE');
-    const shipVouchers = (myCoupons ?? []).filter((c) => c.type === 'FREE_SHIPPING' && c.status === 'ACTIVE');
-    const freeByThreshold = shipConfig ? cart.subtotal >= shipConfig.freeShipFrom : false;
-    const total = cart.subtotal + (shippingFee ?? 0);
+    const submitting = isBuyNow ? createDirect.isPending : create.isPending;
+    const submitIsError = isBuyNow ? createDirect.isError : create.isError;
+    const submitError = isBuyNow ? createDirect.error : create.error;
+
+    const onSubmit = (v: FormValues) => {
+        const coupons = { productCouponCode: productCode || undefined, shippingCouponCode: shippingCode || undefined };
+        const handlers = {
+            onSuccess: ({ order, paymentUrl }: { order: { id: string }; paymentUrl?: string }) => {
+                clearBuyNow();
+                if (paymentUrl) window.location.href = paymentUrl;
+                else router.push(`/orders/${order.id}`);
+            },
+        };
+        if (isBuyNow && buyNowItem) {
+            createDirect.mutate({ ...v, ...coupons, productId: buyNowItem.productId, variantId: buyNowItem.variantId, quantity: buyNowItem.quantity }, handlers);
+        } else {
+            create.mutate({ ...v, ...coupons }, handlers);
+        }
+    };
+
+    // ----- Guard render (sau khi đã gọi hết hook) -----
+    if (isBuyNow && !buyNowItem) {
+        return (
+            <div className="mx-auto max-w-6xl px-4 py-16 text-center">
+                <p className="text-sm text-gray-500">Phiên “Mua ngay” đã kết thúc hoặc trang vừa được tải lại.</p>
+                <Link href="/products" className="mt-3 inline-block text-sm text-blue-600 hover:underline">Chọn sản phẩm →</Link>
+            </div>
+        );
+    }
+    if (!isBuyNow) {
+        if (isLoading) return <div className="mx-auto max-w-6xl px-4 py-10 text-sm text-gray-400">Đang tải…</div>;
+        if (!cart || cart.items.length === 0) {
+            return (
+                <div className="mx-auto max-w-6xl px-4 py-16 text-center">
+                    <p className="text-sm text-gray-500">Giỏ hàng trống.</p>
+                    <Link href="/products" className="mt-3 inline-block text-sm text-blue-600 hover:underline">Mua sắm ngay →</Link>
+                </div>
+            );
+        }
+    }
 
     return (
         <form onSubmit={handleSubmit(onSubmit)} className="mx-auto max-w-6xl px-4 py-8">
-            <h1 className="mb-6 text-2xl font-bold text-gray-900">Thanh toán</h1>
+            <h1 className="mb-6 flex items-center gap-2 text-2xl font-bold text-gray-900">
+                Thanh toán
+                {isBuyNow && <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-600"><Zap className="h-3.5 w-3.5" /> Mua ngay</span>}
+            </h1>
             <div className="grid gap-6 lg:grid-cols-3">
                 <div className="space-y-6 lg:col-span-2">
                     <section className="rounded-xl border border-gray-200 bg-white p-5">
@@ -156,9 +194,9 @@ export default function CheckoutPage() {
                 </div>
                 <aside className="lg:col-span-1">
                     <div className="sticky top-24 rounded-xl border border-gray-200 bg-white p-5">
-                        <h2 className="mb-4 font-semibold text-gray-900">Đơn hàng ({cart.itemCount})</h2>
+                        <h2 className="mb-4 font-semibold text-gray-900">Đơn hàng ({itemCount})</h2>
                         <ul className="max-h-64 space-y-3 overflow-y-auto">
-                            {cart.items.map((it) => (
+                            {items.map((it) => (
                                 <li key={it.id} className="flex gap-3">
                                     <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded border border-gray-100 bg-gray-50">
                                         {it.image && <Image src={it.image} alt="" fill sizes="48px" className="object-contain p-1" />}
@@ -172,51 +210,28 @@ export default function CheckoutPage() {
                                 </li>
                             ))}
                         </ul>
-                        <div className="mb-4 space-y-3 border-t border-gray-100 pt-4">
-                            <p className="flex items-center gap-2 text-sm font-semibold text-gray-800"><Ticket className="h-4 w-4 text-blue-600" /> Mã giảm giá</p>
-                            <div>
-                                <div className="flex gap-2">
-                                    <input value={productCode} onChange={(e) => setProductCode(e.target.value.toUpperCase())}
-                                        placeholder="Mã giảm tiền hàng"
-                                        className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm uppercase outline-none focus:border-blue-500" />
-                                    {productCode && <button type="button" onClick={() => setProductCode('')} className="text-xs text-gray-400 hover:text-red-500">Bỏ</button>}
+                        <div className="mb-4 border-t border-gray-100 pt-4">
+                            <button type="button" onClick={() => setShowCoupon(true)}
+                                className="flex w-full items-center justify-between rounded-lg border border-gray-200 px-3 py-2.5 text-sm hover:bg-gray-50">
+                                <span className="flex items-center gap-2 font-medium text-gray-800"><Ticket className="h-4 w-4 text-blue-600" /> Mã giảm giá</span>
+                                <span className="flex items-center gap-1 text-gray-400">
+                                    {productCode || shippingCode
+                                        ? <span className="font-medium text-blue-600">Đã chọn {[productCode, shippingCode].filter(Boolean).length} mã</span>
+                                        : 'Chọn mã'}
+                                    <ChevronRight className="h-4 w-4" />
+                                </span>
+                            </button>
+                            {(productCode || shippingCode) && (
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {productCode && <span className="rounded border border-blue-200 bg-blue-50 px-2 py-0.5 font-mono text-xs text-blue-600">{productCode}</span>}
+                                    {shippingCode && <span className="rounded border border-blue-200 bg-blue-50 px-2 py-0.5 font-mono text-xs text-blue-600">{shippingCode}</span>}
                                 </div>
-                                {productVouchers.length > 0 && (
-                                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                                        {productVouchers.map((c) => (
-                                            <button key={c.id} type="button" onClick={() => setProductCode(c.code)}
-                                                className={`rounded border px-2 py-0.5 text-xs ${productCode === c.code ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 text-gray-600'}`}>
-                                                {c.code}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                                {quote?.errors.product && <p className="mt-1 text-xs text-red-500">{quote.errors.product}</p>}
-                            </div>
-
-                            {/* Mã miễn phí vận chuyển */}
-                            <div>
-                                <div className="flex gap-2">
-                                    <input value={shippingCode} onChange={(e) => setShippingCode(e.target.value.toUpperCase())}
-                                        placeholder="Mã miễn phí vận chuyển"
-                                        className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm uppercase outline-none focus:border-blue-500" />
-                                    {shippingCode && <button type="button" onClick={() => setShippingCode('')} className="text-xs text-gray-400 hover:text-red-500">Bỏ</button>}
-                                </div>
-                                {shipVouchers.length > 0 && (
-                                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                                        {shipVouchers.map((c) => (
-                                            <button key={c.id} type="button" onClick={() => setShippingCode(c.code)}
-                                                className={`rounded border px-2 py-0.5 text-xs ${shippingCode === c.code ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-200 text-gray-600'}`}>
-                                                {c.code}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                                {quote?.errors.shipping && <p className="mt-1 text-xs text-red-500">{quote.errors.shipping}</p>}
-                            </div>
+                            )}
+                            {quote?.errors.product && <p className="mt-1 text-xs text-red-500">{quote.errors.product}</p>}
+                            {quote?.errors.shipping && <p className="mt-1 text-xs text-red-500">{quote.errors.shipping}</p>}
                         </div>
                         <div className="mt-4 space-y-1.5 border-t border-gray-100 pt-4 text-sm">
-                            <div className="flex justify-between text-gray-600"><span>Tạm tính</span><span>{formatVnd(cart.subtotal)}</span></div>
+                            <div className="flex justify-between text-gray-600"><span>Tạm tính</span><span>{formatVnd(subtotal)}</span></div>
                             <div className="flex justify-between text-gray-600">
                                 <span>Phí vận chuyển</span>
                                 <span>
@@ -225,8 +240,8 @@ export default function CheckoutPage() {
                                             : formatVnd(shippingFee)}
                                 </span>
                             </div>
-                            {freeByThreshold && (
-                                <p className="text-xs text-green-600">Đơn ≥ {formatVnd(shipConfig!.freeShipFrom)} được miễn phí vận chuyển</p>
+                            {freeByThreshold && shipConfig && (
+                                <p className="text-xs text-green-600">Đơn ≥ {formatVnd(shipConfig.freeShipFrom)} được miễn phí vận chuyển</p>
                             )}
                             {discountAmount > 0 && (
                                 <div className="flex justify-between text-green-600"><span>Giảm giá</span><span>-{formatVnd(discountAmount)}</span></div>
@@ -246,16 +261,31 @@ export default function CheckoutPage() {
                                 <button type="button" onClick={() => setShowTerms(true)} className="cursor-pointer font-medium text-blue-600 hover:underline">Điều khoản mua hàng</button>
                             </span>
                         </label>
-                        <button type="submit" disabled={create.isPending || !agreed}
+                        <button type="submit" disabled={submitting || !agreed}
                             className="mt-4 flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-blue-600 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
-                            {create.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
                             {method === 'VNPAY' ? 'Thanh toán VNPAY' : 'Đặt hàng'}
                         </button>
-                        {create.isError && <p className="mt-2 text-sm text-red-600">{getApiErrorMessage(create.error)}</p>}
+                        {submitIsError && <p className="mt-2 text-sm text-red-600">{getApiErrorMessage(submitError)}</p>}
                     </div>
                 </aside>
             </div>
             {showTerms && <PolicyModal slug="purchase" onClose={() => setShowTerms(false)} />}
+            <CouponPickerModal
+                open={showCoupon}
+                onClose={() => setShowCoupon(false)}
+                initialProduct={productCode}
+                initialShipping={shippingCode}
+                onApply={(p, s) => { setProductCode(p); setShippingCode(s); }}
+            />
         </form>
+    );
+}
+
+export default function CheckoutPage() {
+    return (
+        <Suspense fallback={<div className="mx-auto max-w-6xl px-4 py-10 text-sm text-gray-400">Đang tải…</div>}>
+            <CheckoutInner />
+        </Suspense>
     );
 }

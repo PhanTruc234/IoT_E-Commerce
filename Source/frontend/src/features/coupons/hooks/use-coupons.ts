@@ -21,6 +21,25 @@ export function useCouponQuote(body: { subtotal: number; shippingFee: number; pr
         enabled,
     });
 }
+export function useFlashCoupons() {
+    const status = useAuthStore((s) => s.status);
+    return useQuery({
+        queryKey: ['coupons', 'flash'],
+        queryFn: couponsApi.flash,
+        enabled: status === 'authenticated',
+        refetchInterval: 15000, // cập nhật số lượng còn lại mỗi 15s
+    });
+}
+export function useClaimCoupon() {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: (couponId: string) => couponsApi.claim(couponId),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ['coupons', 'flash'] });
+            qc.invalidateQueries({ queryKey: ['coupons', 'my'] });
+        },
+    });
+}
 // Admin
 export function useAdminCoupons() {
     return useQuery({ queryKey: ['admin', 'coupons'], queryFn: couponsApi.adminList });
