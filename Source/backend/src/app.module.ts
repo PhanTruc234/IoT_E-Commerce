@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PrismaModule } from './prisma/prisma.module';
 import { UsersModule } from './app/users/users.module';
 import { AuthModule } from './app/auth/auth.module';
@@ -18,7 +18,7 @@ import { ReviewsModule } from './app/reviews/reviews.module';
 import { AnalyticsModule } from './app/analytics/analytics.module';
 import { AuditModule } from './app/audit/audit.module';
 import { OverviewModule } from './app/overview/overview.module';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { SupportModule } from './app/support/support.module';
 import { ShippingModule } from './app/shipping/shipping.module';
 import { WishlistModule } from './app/wishlist/wishlist.module';
@@ -26,11 +26,17 @@ import { CouponsModule } from './app/coupons/coupons.module';
 import { PromotionsModule } from './app/promotions/promotions.module';
 import { NotificationsModule } from './app/notifications/notifications.module';
 import { HealthModule } from './app/health/health.module';
+import { throttlerOptionsFactory } from './core/security/throttler.config';
+import { APP_GUARD } from '@nestjs/core';
+import { AppThrottlerGuard } from './core/security/app-throttler.guard';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: throttlerOptionsFactory,
+    }),
     ScheduleModule.forRoot(),
     PrismaModule,
     UsersModule,
@@ -57,5 +63,6 @@ import { HealthModule } from './app/health/health.module';
     NotificationsModule,
     HealthModule
   ],
+  providers: [{ provide: APP_GUARD, useClass: AppThrottlerGuard }],
 })
 export class AppModule { }

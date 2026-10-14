@@ -4,6 +4,7 @@ import { CurrentUser } from '../../core/decorators/current-user.decorator';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateDirectOrderDto } from './dto/create-direct-order.dto';
+import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('Orders')
 @ApiBearerAuth()
@@ -12,12 +13,14 @@ export class OrdersController {
     constructor(private readonly service: OrdersService) { }
 
     @Post()
+    @Throttle({ default: { limit: 10, ttl: 60_000, blockDuration: 120_000 } })
     @ApiOperation({ summary: 'Đặt hàng từ giỏ' })
     create(@CurrentUser('id') userId: string, @Body() dto: CreateOrderDto, @Ip() ip: string) {
         return this.service.createFromCart(userId, dto, ip);
     }
 
     @Post('direct')
+    @Throttle({ default: { limit: 10, ttl: 60_000, blockDuration: 120_000 } })
     @ApiOperation({ summary: 'Mua ngay 1 sản phẩm (không qua giỏ hàng)' })
     createDirect(@CurrentUser('id') userId: string, @Body() dto: CreateDirectOrderDto, @Ip() ip: string) {
         return this.service.createDirect(userId, dto, ip);
@@ -42,6 +45,7 @@ export class OrdersController {
     }
 
     @Post(':id/repay')
+    @Throttle({ default: { limit: 10, ttl: 60_000, blockDuration: 120_000 } })
     @ApiOperation({ summary: 'Thanh toán lại đơn VNPAY (đơn chờ, chưa thanh toán)' })
     repay(@CurrentUser('id') userId: string, @Param('id') id: string, @Ip() ip: string) {
         return this.service.repay(userId, id, ip);

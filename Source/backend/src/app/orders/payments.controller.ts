@@ -5,7 +5,10 @@ import { Response } from 'express';
 import { Public } from '../../core/decorators/public.decorator';
 import { VnpayService } from './vnpay.service';
 import { OrdersService } from './orders.service';
+import { SkipThrottle } from '@nestjs/throttler';
 
+
+@SkipThrottle({ default: true, burst: true })
 @ApiTags('Payments')
 @Controller('payments')
 export class PaymentsController {

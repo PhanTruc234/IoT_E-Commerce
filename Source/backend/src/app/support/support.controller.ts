@@ -19,8 +19,7 @@ export class SupportController {
     ) { }
 
     @Post('uploads')
-    @UseGuards(ThrottlerGuard)
-    @Throttle({ default: { limit: 30, ttl: 60_000 } })
+    @Throttle({ default: { limit: 30, ttl: 60_000, blockDuration: 120_000 } })
     @ApiOperation({ summary: 'Upload ảnh đính kèm cho yêu cầu (1–6 ảnh)' })
     @ApiConsumes('multipart/form-data')
     @UseInterceptors(FilesInterceptor('files', 6))
@@ -37,8 +36,7 @@ export class SupportController {
     }
 
     @Post()
-    @UseGuards(ThrottlerGuard)
-    @Throttle({ default: { limit: 10, ttl: 60_000 } })
+    @Throttle({ default: { limit: 10, ttl: 60_000, blockDuration: 120_000 } })
     @ApiOperation({ summary: 'Tạo yêu cầu hỗ trợ' })
     create(@CurrentUser('id') userId: string,
         @Body() dto: CreateTicketDto) {
@@ -59,8 +57,7 @@ export class SupportController {
     }
 
     @Post(':id/messages')
-    @UseGuards(ThrottlerGuard)
-    @Throttle({ default: { limit: 20, ttl: 60_000 } })
+    @Throttle({ default: { limit: 20, ttl: 60_000, blockDuration: 120_000 } })
     @ApiOperation({ summary: 'Gửi tin nhắn vào yêu cầu' })
     addMessage(
         @CurrentUser('id') userId: string,
