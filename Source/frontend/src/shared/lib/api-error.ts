@@ -10,3 +10,9 @@ export function getApiErrorMessage(error: unknown, fallback = 'Đã có lỗi x�
     }
     return fallback;
 }
+export function getRetryAfter(error: unknown): number {
+    if (error instanceof AxiosError) {
+        return (error.response?.data as ApiErrorResponse | undefined)?.retryAfter ?? 0;
+    }
+    return 0;
+}

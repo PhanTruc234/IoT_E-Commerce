@@ -1,15 +1,22 @@
 import Link from 'next/link';
 import Image from 'next/image';
+import logo from '../../../public/IoTechNew.png';
+import authBg from '../../../public/auth-bg.webp';
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
     return (
-        <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12">
-            <div className="w-full max-w-md">
-                <Link href="/" className="mb-8 flex justify-center">
-                    <Image src="/logo.png" alt="IoTech" width={160} height={56} priority className="h-14 w-auto object-contain" />
-                </Link>
-                <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">{children}</div>
+        <div className="relative flex min-h-screen items-center justify-center px-4 py-10">
+            {/* Ảnh nền cố định toàn màn hình; trang đăng ký dài thì cuộn form, nền đứng yên */}
+            <div aria-hidden className="fixed inset-0 -z-10">
+                <Image src={authBg} alt="" fill priority placeholder="blur" sizes="100vw" className="object-cover" />
             </div>
+
+            <main className="w-full max-w-[440px] rounded-2xl border border-white/70 bg-white/85 p-6 shadow-2xl shadow-blue-900/10 backdrop-blur-md sm:p-8">
+                <Link href="/" className="mb-6 flex justify-center">
+                    <Image src={logo} alt="IoTech – về trang chủ" priority className="h-16 w-auto mix-blend-multiply" />
+                </Link>
+                {children}
+            </main>
         </div>
     );
 }

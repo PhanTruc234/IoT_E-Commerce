@@ -7,10 +7,10 @@ export const metadata: Metadata = { title: 'Đăng nhập' };
 export default function LoginPage() {
     return (
         <div>
-            <h1 className="mb-1 text-2xl font-semibold text-gray-900">Đăng nhập</h1>
-            <p className="mb-6 text-sm text-gray-500">Chào mừng bạn quay lại 👋</p>
+            <h1 className="text-center text-2xl font-semibold text-slate-900">Đăng nhập</h1>
+            <p className="mt-1.5 mb-7 text-center text-sm text-slate-500">Chào mừng bạn quay lại IoTech.</p>
             <LoginForm />
-            <p className="mt-6 text-center text-sm text-gray-500">
+            <p className="mt-8 text-center text-sm text-slate-500">
                 Chưa có tài khoản?{' '}
                 <Link href="/register" className="font-medium text-blue-600 hover:underline">Đăng ký ngay</Link>
             </p>

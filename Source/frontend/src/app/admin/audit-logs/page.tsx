@@ -30,6 +30,7 @@ const ACTION: Record<string, { label: string; color: 'green' | 'blue' | 'amber' 
     STATUS_CHANGE: { label: 'Đổi trạng thái', color: 'amber' },
     ANSWER: { label: 'Trả lời', color: 'amber' },
     ACTIVATE: { label: 'Kích hoạt', color: 'amber' },
+    LOGIN_LOCKED: { label: 'Tạm khoá đăng nhập', color: 'red' },
 };
 
 const ENTITY: Record<string, string> = {

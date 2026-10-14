@@ -9,13 +9,13 @@ export function useRegister() {
     const router = useRouter();
     const setUser = useAuthStore((s) => s.setUser);
     return useMutation({
-        mutationFn: (input: RegisterInput) =>
+        mutationFn: (input: RegisterInput & { acceptTerms: boolean }) =>
             authApi.register({
                 fullName: input.fullName,
                 email: input.email,
                 password: input.password,
                 phone: input.phone ? input.phone : undefined,
-                acceptTerms: true,
+                acceptTerms: input.acceptTerms,
             }),
         onSuccess: (data) => {
             setUser(data.user);

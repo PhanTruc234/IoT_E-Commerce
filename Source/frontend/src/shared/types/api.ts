@@ -2,6 +2,7 @@ export interface ApiErrorResponse {
     statusCode: number;
     message: string | string[];
     error?: string;
+    retryAfter?: number;
 }
 
 export interface Paginated<T> {
