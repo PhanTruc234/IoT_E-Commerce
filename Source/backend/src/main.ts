@@ -6,6 +6,7 @@ import { AppModule } from './app.module';
 import cookieParser from 'cookie-parser';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
+import { csrfProtection } from './core/security/csrf.middleware';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -31,20 +32,25 @@ async function bootstrap() {
   app.enableCors({
     origin: origins,
     credentials: true,
+    maxAge: 600,
   });
-
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('TMDT IoT API')
-    .setDescription('B2C e-commerce API cho thiết bị IoT & linh kiện điện tử')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, document);
+  app.use(csrfProtection(origins));
+  const swaggerEnabled =
+    config.get<string>('SWAGGER_ENABLED') === 'true' || config.get<string>('NODE_ENV') !== 'production';
+  if (swaggerEnabled) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('TMDT IoT API')
+      .setDescription('B2C e-commerce API cho thiết bị IoT & linh kiện điện tử')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/docs', app, document);
+  }
 
   const port = config.get<number>('PORT') ?? 3001;
   await app.listen(port);
   console.log(`Backend: http://localhost:${port}`);
-  console.log(`Swagger: http://localhost:${port}/api/docs`);
+  if (swaggerEnabled) console.log(`Swagger: http://localhost:${port}/api/docs`);
 }
 bootstrap();
