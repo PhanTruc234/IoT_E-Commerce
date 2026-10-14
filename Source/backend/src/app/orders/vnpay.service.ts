@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHmac } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 
 @Injectable()
 export class VnpayService {
@@ -22,7 +22,12 @@ export class VnpayService {
         const p = (n: number) => String(n).padStart(2, '0');
         return `${t.getUTCFullYear()}${p(t.getUTCMonth() + 1)}${p(t.getUTCDate())}${p(t.getUTCHours())}${p(t.getUTCMinutes())}${p(t.getUTCSeconds())}`;
     }
-
+    private safeEqualHex(expected: string, received?: string): boolean {
+        if (!received) return false;
+        const a = Buffer.from(expected, 'hex');
+        const b = Buffer.from(received, 'hex');
+        return a.length > 0 && a.length === b.length && timingSafeEqual(a, b);
+    }
     buildPaymentUrl(input: { code: string; amount: number; ip: string; orderInfo: string }): string {
         const tmnCode = this.config.getOrThrow<string>('VNP_TMNCODE');
         const secret = this.config.getOrThrow<string>('VNP_HASHSECRET');
@@ -59,7 +64,7 @@ export class VnpayService {
         const signData = this.buildSignData(params);
         const check = createHmac('sha512', secret).update(Buffer.from(signData, 'utf-8')).digest('hex');
 
-        const valid = check === secureHash;
+        const valid = this.safeEqualHex(check, secureHash);
         return { valid, code: query['vnp_TxnRef'], success: valid && query['vnp_ResponseCode'] === '00' };
     }
 }
