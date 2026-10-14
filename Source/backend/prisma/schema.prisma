@@ -142,6 +142,8 @@ model User {
   role              Role               @default(CUSTOMER)
   isActive          Boolean            @default(true)
   isEmailVerified   Boolean            @default(false)
+  failedLoginCount  Int                @default(0)
+  lockedUntil       DateTime?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   refreshTokens     RefreshToken[]
@@ -683,15 +685,15 @@ model Coupon {
   isActive     Boolean      @default(true)
 
   // Flash sale (săn mã theo khung giờ)
-  isFlashSale  Boolean      @default(false)
+  isFlashSale  Boolean   @default(false)
   claimStartAt DateTime?
   claimEndAt   DateTime?
   claimLimit   Int?
-  claimedCount Int          @default(0)
+  claimedCount Int       @default(0)
   announcedAt  DateTime?
 
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   userCoupons UserCoupon[]
 
@@ -699,12 +701,12 @@ model Coupon {
 }
 
 model UserCoupon {
-  id       String    @id @default(uuid())
-  userId   String
-  couponId String
-  savedAt  DateTime  @default(now())
-  usedAt   DateTime?
-  orderId  String?
+  id               String    @id @default(uuid())
+  userId           String
+  couponId         String
+  savedAt          DateTime  @default(now())
+  usedAt           DateTime?
+  orderId          String?
   expiryRemindedAt DateTime?
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)

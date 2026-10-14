@@ -18,7 +18,11 @@ import { RegisterDto } from './dto/register.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { OAuth2Client } from 'google-auth-library';
 import { POLICY_VERSION } from 'src/core/config/policy';
+import { AccountLockedException } from './exceptions/account-locked.exception';
 
+const MAX_FAILED_LOGINS = 5;
+const LOCK_MINUTES = 2;
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('iotech-dummy-password', 10);
 export interface AccessTokenPayload {
     sub: string;
     email: string;
@@ -44,7 +48,7 @@ export class AuthService {
         private readonly prisma: PrismaService,
     ) { }
     sanitize(user: User) {
-        const { passwordHash, ...safe } = user;
+        const { passwordHash, failedLoginCount, lockedUntil, ...safe } = user;
         return safe;
     }
     private async pruneExpiredTokens(userId: string) {
@@ -115,7 +119,18 @@ export class AuthService {
             ],
         });
     }
+    private async recordFailedLogin(userId: string) {
+        const { failedLoginCount } = await this.prisma.user.update({
+            where: { id: userId },
+            data: { failedLoginCount: { increment: 1 } },
+            select: { failedLoginCount: true },
+        });
+        if (failedLoginCount % MAX_FAILED_LOGINS !== 0) return;
 
+        const lockedUntil = new Date(Date.now() + LOCK_MINUTES * 60_000);
+        await this.prisma.user.update({ where: { id: userId }, data: { lockedUntil } });
+        throw new AccountLockedException(lockedUntil, true);
+    }
     async register(dto: RegisterDto, meta: SessionMeta) {
         if (!dto.acceptTerms) {
             throw new BadRequestException('Bạn cần đồng ý Điều khoản & Chính sách bảo vệ dữ liệu để đăng ký');
@@ -139,19 +154,30 @@ export class AuthService {
     async login(dto: LoginDto, meta: SessionMeta) {
         const user = await this.usersService.findByEmail(dto.email);
         if (!user) {
+            await bcrypt.compare(dto.password, DUMMY_PASSWORD_HASH);
             throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
         }
         if (!user.isActive) {
             throw new ForbiddenException('Tài khoản đã bị khóa');
+        }
+        if (user.lockedUntil && user.lockedUntil > new Date()) {
+            throw new AccountLockedException(user.lockedUntil);
         }
         if (!user.passwordHash) {
             throw new UnauthorizedException('Tài khoản này đăng nhập bằng Google');
         }
         const valid = await bcrypt.compare(dto.password, user.passwordHash);
         if (!valid) {
+            await this.recordFailedLogin(user.id);
             throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
         }
 
+        if (user.failedLoginCount > 0 || user.lockedUntil) {
+            await this.prisma.user.update({
+                where: { id: user.id },
+                data: { failedLoginCount: 0, lockedUntil: null },
+            });
+        }
         return this.issueTokens(user, meta);
     }
     async googleLogin(dto: GoogleLoginDto, meta: SessionMeta) {
@@ -184,6 +210,9 @@ export class AuthService {
                     },
                 });
             } else {
+                if (!dto.acceptTerms) {
+                    throw new BadRequestException('Bạn cần đồng ý Điều khoản & Chính sách bảo vệ dữ liệu để tạo tài khoản');
+                }
                 user = await this.prisma.user.create({
                     data: {
                         email: payload.email,

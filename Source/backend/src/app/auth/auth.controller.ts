@@ -27,7 +27,8 @@ import { RegisterDto } from './dto/register.dto';
 import { AuditService } from '../audit/audit.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
+import { AccountLockedException } from './exceptions/account-locked.exception';
 
 const REFRESH_COOKIE = 'refreshToken';
 const REFRESH_COOKIE_PATH = '/api/auth';
@@ -35,7 +36,7 @@ const REFRESH_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 
 const ACCESS_COOKIE = 'accessToken';
 const ACCESS_MAX_AGE = 15 * 60 * 1000;
-
+const AUTH_THROTTLE = { default: { limit: 5, ttl: 60_000, blockDuration: 120_000 } };
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
@@ -78,8 +79,7 @@ export class AuthController {
         res.cookie(ACCESS_COOKIE, token, this.cookieOptions(ACCESS_MAX_AGE, '/'));
     }
 
-    @Throttle({ default: { limit: 5, ttl: 60_000 } })
-    @UseGuards(ThrottlerGuard)
+    @Throttle(AUTH_THROTTLE)
     @Public()
     @Post('register')
     @ApiOperation({ summary: 'Đăng ký tài khoản khách hàng' })
@@ -111,8 +111,7 @@ export class AuthController {
         return rest;
     }
 
-    @Throttle({ default: { limit: 5, ttl: 60_000 } })
-    @UseGuards(ThrottlerGuard)
+    @Throttle(AUTH_THROTTLE)
     @Public()
     @Post('login')
     @HttpCode(HttpStatus.OK)
@@ -145,24 +144,24 @@ export class AuthController {
             });
             return rest;
         } catch (e) {
+            const justLocked = e instanceof AccountLockedException && e.justLocked;
             void this.audit.record({
                 actorEmail: dto.email,
                 role: null,
-                action: 'LOGIN_FAILED',
+                action: justLocked ? 'LOGIN_LOCKED' : 'LOGIN_FAILED',
                 entity: 'AUTH',
                 method: 'POST',
                 path: '/auth/login',
                 statusCode: (e as { status?: number })?.status ?? 401,
                 ipAddress: ip,
                 userAgent,
-                summary: 'Đăng nhập thất bại',
+                summary: justLocked ? 'Tạm khoá tài khoản do đăng nhập sai nhiều lần' : 'Đăng nhập thất bại',
             });
             throw e;
         }
     }
 
     @Throttle({ default: { limit: 10, ttl: 60_000 } })
-    @UseGuards(ThrottlerGuard)
     @Public()
     @Post('google')
     @HttpCode(HttpStatus.OK)
