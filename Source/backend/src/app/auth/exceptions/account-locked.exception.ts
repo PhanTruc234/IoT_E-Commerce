@@ -14,7 +14,7 @@ export class AccountLockedException extends HttpException {
                     : `Tài khoản đang tạm khoá do đăng nhập sai nhiều lần. Vui lòng thử lại sau ${minutes} phút.`,
                 retryAfter,
             },
-            HttpStatus.LOCKED,
+            HttpStatus.TOO_MANY_REQUESTS,
         );
     }
 }
