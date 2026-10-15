@@ -8,7 +8,7 @@ export class AccountLockedException extends HttpException {
         const minutes = Math.ceil(retryAfter / 60);
         super(
             {
-                statusCode: HttpStatus.LOCKED,
+                statusCode: HttpStatus.TOO_MANY_REQUESTS,
                 message: justLocked
                     ? `Bạn đã đăng nhập sai quá nhiều lần, tạm khoá ${minutes} phút.`
                     : `Tài khoản đang tạm khoá do đăng nhập sai nhiều lần. Vui lòng thử lại sau ${minutes} phút.`,
