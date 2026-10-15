@@ -7,13 +7,15 @@ import cookieParser from 'cookie-parser';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { csrfProtection } from './core/security/csrf.middleware';
+import { clientIpMiddleware } from './core/security/client-ip';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get(ConfigService);
   app.use(helmet());
   app.setGlobalPrefix('api');
-  app.set('trust proxy', 1);
+  app.set('trust proxy', Number(config.get<string>('TRUST_PROXY') ?? 1));
+  app.use(clientIpMiddleware(config.get<string>('CLIENT_IP_HEADER')));
   app.use(cookieParser());
   app.useGlobalPipes(
     new ValidationPipe({
