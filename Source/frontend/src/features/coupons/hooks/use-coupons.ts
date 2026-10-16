@@ -24,9 +24,10 @@ export function useCouponQuote(body: { subtotal: number; shippingFee: number; pr
 export function useFlashCoupons() {
     const status = useAuthStore((s) => s.status);
     return useQuery({
-        queryKey: ['coupons', 'flash'],
+        // Khách chưa đăng nhập vẫn xem được; đăng nhập xong tải lại để biết mã nào mình đã lấy
+        queryKey: ['coupons', 'flash', status === 'authenticated'],
         queryFn: couponsApi.flash,
-        enabled: status === 'authenticated',
+        enabled: status !== 'loading',
         refetchInterval: 15000, // cập nhật số lượng còn lại mỗi 15s
     });
 }
