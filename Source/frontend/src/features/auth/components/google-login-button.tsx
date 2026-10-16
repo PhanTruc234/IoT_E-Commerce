@@ -6,6 +6,7 @@ import { GoogleLogin } from '@react-oauth/google';
 import { getApiErrorMessage } from '@/shared/lib/api-error';
 import { authApi } from '../api/auth.api';
 import { useAuthStore } from '../store/auth.store';
+import { getSafeNext } from '@/shared/lib/safe-next';
 
 export function GoogleLoginButton() {
     const router = useRouter();
@@ -21,7 +22,7 @@ export function GoogleLoginButton() {
                         try {
                             const { user } = await authApi.google(cred.credential);
                             setUser(user);
-                            router.push(user.role === 'ADMIN' ? '/admin' : '/');
+                            router.push(getSafeNext() ?? (user.role === 'ADMIN' ? '/admin' : '/'));
                             router.refresh();
                         } catch (e) {
                             setError(getApiErrorMessage(e));
