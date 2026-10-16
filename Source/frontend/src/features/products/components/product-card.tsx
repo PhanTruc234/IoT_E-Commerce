@@ -94,7 +94,7 @@ export function ProductCard({ product }: { product: ProductListItem }) {
                     className="mt-2 flex w-full items-center justify-center gap-1 rounded-lg bg-orange-500 py-1.5 text-xs font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     <Zap className="h-3.5 w-3.5" />
-                    {outOfStock ? 'Hết hàng' : product.type === 'VARIABLE' ? 'Chọn & mua' : 'Mua ngay'}
+                    {outOfStock ? 'Hết hàng' : product.type === 'VARIABLE' ? 'Chọn' : 'Mua ngay'}
                 </button>
             </div>
         </Link>
