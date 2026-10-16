@@ -96,7 +96,7 @@ export default function EditPromotionPage() {
                     <div />
                     <label className="block sm:col-span-2 lg:col-span-3"><span className="mb-1 block text-xs font-medium text-gray-600">Mô tả ngắn <span className="text-gray-400">· hiển thị trên banner</span></span>
                         <textarea className={input} rows={3} value={form.description ?? ''} onChange={(e) => set('description', e.target.value)} /></label>
-                    <div className="block sm:col-span-2 lg:col-span-3"><span className="mb-1 block text-xs font-medium text-gray-600">Ảnh banner</span>
+                    <div className="block sm:col-span-2 lg:col-span-3"><span className="mb-1 block text-xs font-medium text-gray-600">Ảnh nền banner <span className="font-normal text-gray-400">· ảnh ngang (~1920×600), chừa trống bên trái cho chữ</span></span>
                         <input className={input} value={form.bannerImage ?? ''} onChange={(e) => set('bannerImage', e.target.value)} placeholder="Dán URL hoặc tải ảnh ↓" />
                         <div className="mt-1.5 flex items-center gap-2">
                             <label className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-gray-300 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50">

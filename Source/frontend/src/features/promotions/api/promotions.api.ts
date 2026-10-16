@@ -9,6 +9,8 @@ export interface ActivePromotion {
     discountType: DiscountType; value: number; maxDiscount: number | null;
     scope: PromotionScope; priority: number; endAt: string | null;
     productIds: string[]; categoryIds: string[];
+    startAt?: string | null;
+    categories?: { id: string; name: string }[];
 }
 export interface AdminPromotion extends ActivePromotion {
     startAt: string | null; isActive: boolean; createdAt: string;
