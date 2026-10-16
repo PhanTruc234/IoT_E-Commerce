@@ -124,16 +124,19 @@ export class CouponsService {
     }
 
     // ----- Flash sale (săn mã theo khung giờ) -----
-    async flashList(userId: string) {
+    async flashList(userId?: string) {
         const now = new Date();
         const coupons = await this.prisma.coupon.findMany({
             where: { isFlashSale: true, isActive: true, OR: [{ claimEndAt: null }, { claimEndAt: { gte: now } }] },
             orderBy: { claimStartAt: 'asc' },
         });
-        const mine = await this.prisma.userCoupon.findMany({
-            where: { userId, couponId: { in: coupons.map((c) => c.id) } },
-            select: { couponId: true },
-        });
+        // Khách chưa đăng nhập: không có mã nào "đã lấy"
+        const mine = userId
+            ? await this.prisma.userCoupon.findMany({
+                where: { userId, couponId: { in: coupons.map((c) => c.id) } },
+                select: { couponId: true },
+            })
+            : [];
         const claimedSet = new Set(mine.map((m) => m.couponId));
         return coupons.map((c) => {
             const remaining = c.claimLimit != null ? Math.max(0, c.claimLimit - c.claimedCount) : null;

@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { Roles } from '../../core/decorators/roles.decorator';
 import { CurrentUser } from '../../core/decorators/current-user.decorator';
+import { OptionalAuth } from '../../core/decorators/optional-auth.decorator';
 import { CouponsService } from './coupons.service';
 import { CreateCouponDto } from './dto/create-coupon.dto';
 import { UpdateCouponDto } from './dto/update-coupon.dto';
@@ -34,9 +35,10 @@ export class CouponsController {
         return this.coupons.quote(userId, dto.subtotal, dto.shippingFee, dto.productCode, dto.shippingCode);
     }
 
+    @OptionalAuth()
     @Get('flash')
-    @ApiOperation({ summary: 'Danh sách mã săn theo khung giờ (đang mở / sắp mở)' })
-    flash(@CurrentUser('id') userId: string) {
+    @ApiOperation({ summary: 'Danh sách mã săn theo khung giờ (khách chưa đăng nhập vẫn xem được)' })
+    flash(@CurrentUser('id') userId?: string) {
         return this.coupons.flashList(userId);
     }
 
