@@ -40,14 +40,19 @@ export class PromotionsService {
                 ],
             },
             orderBy: { priority: 'desc' },
-            include: { products: { select: { productId: true } }, categories: { select: { categoryId: true } } },
+            include: {
+                products: { select: { productId: true } },
+                categories: { select: { categoryId: true, category: { select: { name: true } } } },
+            },
         });
         return promos.map((p) => ({
             id: p.id, name: p.name, description: p.description, bannerImage: p.bannerImage, linkUrl: p.linkUrl,
             discountType: p.discountType, value: p.value, maxDiscount: p.maxDiscount, scope: p.scope,
-            priority: p.priority, endAt: p.endAt,
+            priority: p.priority, startAt: p.startAt, endAt: p.endAt,
             productIds: p.products.map((x) => x.productId),
             categoryIds: p.categories.map((x) => x.categoryId),
+            // Tên danh mục để banner trang chủ ghi "Áp dụng: ..."
+            categories: p.categories.map((x) => ({ id: x.categoryId, name: x.category.name })),
         }));
     }
 
