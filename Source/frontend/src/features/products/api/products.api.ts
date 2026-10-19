@@ -28,6 +28,7 @@ export interface CreateProductPayload {
     price: number;
     salePrice?: number;
     stockQuantity?: number;
+    weightGram?: number;
     status?: ProductStatus;
     type?: ProductType;
 }

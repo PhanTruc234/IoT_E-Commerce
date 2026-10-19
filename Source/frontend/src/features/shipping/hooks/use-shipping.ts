@@ -1,9 +1,31 @@
 'use client';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { shippingApi, type AdminZone } from '../api/shipping.api';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { shippingApi, type AdminZone, type ShippingQuoteBody } from '../api/shipping.api';
 
 export function useShippingConfig() {
     return useQuery({ queryKey: ['shipping', 'config'], queryFn: shippingApi.config, staleTime: 5 * 60 * 1000 });
+}
+
+export function useProvinces() {
+    return useQuery({ queryKey: ['shipping', 'provinces'], queryFn: shippingApi.provinces, staleTime: 24 * 60 * 60 * 1000, retry: 1 });
+}
+export function useWards(provinceId: number | null) {
+    return useQuery({
+        queryKey: ['shipping', 'wards', provinceId],
+        queryFn: () => shippingApi.wards(provinceId!),
+        enabled: !!provinceId,
+        staleTime: 24 * 60 * 60 * 1000,
+    });
+}
+export function useShippingQuote(body: ShippingQuoteBody | null) {
+    return useQuery({
+        queryKey: ['shipping', 'quote', body],
+        queryFn: () => shippingApi.quote(body!),
+        enabled: !!body,
+        staleTime: 5 * 60 * 1000,
+        placeholderData: keepPreviousData,
+        retry: false,
+    });
 }
 
 export function useAdminZones() {

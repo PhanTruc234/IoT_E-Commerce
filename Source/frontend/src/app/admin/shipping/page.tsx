@@ -30,7 +30,7 @@ function ZoneRow({ zone }: { zone: { id: string; name: string; fee: number; prov
                     <p className="text-xs text-gray-400">{zone.provinces.length} tỉnh/thành</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-500">Phí:</span>
+                    <span className="text-sm text-gray-500">Phí tối đa:</span>
                     <input type="number" min={0} step={1000} value={fee} onChange={(e) => setFee(Number(e.target.value))}
                         className="w-32 rounded-lg border border-gray-300 px-3 py-1.5 text-sm outline-none focus:border-blue-500" />
                     <span className="text-xs text-gray-400">{formatVnd(fee)}</span>
@@ -62,7 +62,7 @@ export default function AdminShippingPage() {
 
     return (
         <div>
-            <PageHeader title="Cấu hình vận chuyển" description="Phí giao hàng theo khu vực và ngưỡng miễn phí." />
+            <PageHeader title="Cấu hình vận chuyển" description="Phí khu vực là mức tối đa khách trả: GHN báo cao hơn thì shop bù phần chênh, thấp hơn thì khách trả đúng giá GHN. Khi GHN không phản hồi, khách trả theo phí khu vực." />
 
             <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4">
                 <div className="flex flex-wrap items-center gap-3">

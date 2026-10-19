@@ -43,6 +43,7 @@ export function ProductForm({
             price: '',
             salePrice: '',
             stockQuantity: '0',
+            weightGram: '300',
             status: 'ACTIVE',
             type: 'SIMPLE',
             ...defaultValues,
@@ -77,7 +78,7 @@ export function ProductForm({
                 </Field>
             </div>
 
-            <div className="grid gap-5 sm:grid-cols-3">
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
                 <Field label="Giá gốc (VND)" error={errors.price?.message}>
                     <Input type="number" min={0} {...register('price')} placeholder="150000" />
                 </Field>
@@ -86,6 +87,10 @@ export function ProductForm({
                 </Field>
                 <Field label="Tồn kho" error={errors.stockQuantity?.message}>
                     <Input type="number" min={0} {...register('stockQuantity')} />
+                </Field>
+                <Field label="Khối lượng sản phẩm (gram)" error={errors.weightGram?.message}>
+                    <Input type="number" min={1} max={50000} {...register('weightGram')} placeholder="VD: 10" />
+                    <p className="text-xs text-gray-400">Chưa tính bao bì, hệ thống tự cộng thùng khi gửi GHN</p>
                 </Field>
             </div>
 

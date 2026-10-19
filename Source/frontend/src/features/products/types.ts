@@ -13,6 +13,7 @@ export interface Product {
     price: number;
     salePrice: number | null;
     stockQuantity: number;
+    weightGram: number;
     status: ProductStatus;
     type: ProductType;
     viewCount: number;

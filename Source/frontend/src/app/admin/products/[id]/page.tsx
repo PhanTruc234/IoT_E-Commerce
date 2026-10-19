@@ -87,6 +87,7 @@ export default function EditProductPage() {
                             price: String(product.price),
                             salePrice: product.salePrice != null ? String(product.salePrice) : '',
                             stockQuantity: String(product.stockQuantity),
+                            weightGram: String(product.weightGram ?? 300),
                             status: product.status,
                             type: product.type,
                         }}

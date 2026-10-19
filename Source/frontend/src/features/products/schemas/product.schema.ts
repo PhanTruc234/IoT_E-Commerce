@@ -13,6 +13,7 @@ export const productSchema = z
         price: z.coerce.number().int('Giá phải là số nguyên').min(0, 'Giá ≥ 0'),
         salePrice: z.preprocess(emptyToUndef, z.coerce.number().int().min(0).optional()),
         stockQuantity: z.coerce.number().int().min(0),
+        weightGram: z.coerce.number().int('Khối lượng phải là số nguyên').min(1, 'Khối lượng ≥ 1 gram').max(50000, 'Tối đa 50.000 gram'),
         status: z.enum(['ACTIVE', 'INACTIVE', 'OUT_OF_STOCK']),
         type: z.enum(['SIMPLE', 'VARIABLE', 'COMBO']),
     })
@@ -33,6 +34,7 @@ export function toProductPayload(v: ProductFormOutput): CreateProductPayload {
         price: v.price,
         salePrice: v.salePrice,
         stockQuantity: v.stockQuantity,
+        weightGram: v.weightGram,
         status: v.status,
         type: v.type,
     };
