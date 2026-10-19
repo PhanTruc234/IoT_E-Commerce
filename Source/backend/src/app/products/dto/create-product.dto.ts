@@ -7,6 +7,7 @@ import {
     IsInt,
     IsOptional,
     IsString,
+    Max,
     MaxLength,
     Min,
     MinLength,
@@ -73,6 +74,14 @@ export class CreateProductDto {
     @IsInt()
     @Min(0)
     stockQuantity?: number;
+
+    @ApiPropertyOptional({ default: 300, description: 'Khối lượng tịnh 1 sản phẩm (gram), chưa tính bao bì — hệ thống tự cộng thùng khi gửi GHN' })
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @Max(50000)
+    weightGram?: number;
 
     @ApiPropertyOptional({ enum: ProductStatus, default: ProductStatus.ACTIVE })
     @IsOptional()

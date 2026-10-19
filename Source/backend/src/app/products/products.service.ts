@@ -223,6 +223,7 @@ export class ProductsService {
                 price: dto.price,
                 salePrice: dto.salePrice ?? null,
                 stockQuantity: dto.stockQuantity ?? 0,
+                weightGram: dto.weightGram,
                 status: dto.status,
                 type: dto.type,
                 images: images.length ? { create: images } : undefined,
@@ -252,6 +253,7 @@ export class ProductsService {
             price: dto.price,
             salePrice: dto.salePrice,
             stockQuantity: dto.stockQuantity,
+            weightGram: dto.weightGram,
             status: dto.status,
             type: dto.type,
         };
