@@ -14,7 +14,7 @@ const SORTS: { key: ProductSortKey; label: string }[] = [
     { key: 'price_desc', label: 'Giá cao → thấp' },
     { key: 'best_selling', label: 'Bán chạy' },
 ];
-const LIMIT = 20;
+const LIMIT = 12;
 
 export function ProductListView() {
     const router = useRouter();
