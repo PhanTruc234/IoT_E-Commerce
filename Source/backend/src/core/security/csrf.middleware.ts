@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
-const EXEMPT_PREFIXES = ['/api/payments/'];
+const EXEMPT_PREFIXES = ['/api/payments/', '/api/shipping/ghn/'];
 export function csrfProtection(allowedOrigins: string[]) {
     const allowed = new Set(allowedOrigins);
 

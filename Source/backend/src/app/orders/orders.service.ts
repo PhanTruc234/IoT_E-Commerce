@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateDirectOrderDto } from './dto/create-direct-order.dto';
@@ -9,6 +9,8 @@ import { buildMeta } from 'src/core/utils/pagination.util';
 import { ShippingService } from '../shipping/shipping.service';
 import { CouponsService } from '../coupons/coupons.service';
 import { applyPromotions, PromotionsService } from '../promotions/promotions.service';
+import { GhnError, GhnService, type ParcelLine } from '../shipping/ghn.service';
+import { CARRIER_NOTIFY, carrierTarget, GHN_STATUS_LABEL, isBackward, ShipmentsService, type CarrierEvent } from './shipments.service';
 
 @Injectable()
 export class OrdersService {
@@ -18,10 +20,34 @@ export class OrdersService {
         private readonly shipping: ShippingService,
         private readonly coupons: CouponsService,
         private readonly promotions: PromotionsService,
+        private readonly ghn: GhnService,
+        private readonly shipments: ShipmentsService,
     ) { }
 
     private genCode(): string {
         return `DH${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    }
+
+    private async resolveAddress(dto: CreateOrderDto) {
+        if (!dto.provinceId || !dto.wardId) {
+            return { province: dto.province ?? null, address: dto.address };
+        }
+        let loc: Awaited<ReturnType<GhnService['resolve']>>;
+        try {
+            loc = await this.ghn.resolve(dto.provinceId, dto.wardId);
+        } catch (e) {
+            if (e instanceof GhnError && e.code !== 'NETWORK' && e.code !== 'NOT_CONFIGURED') loc = null;
+            else throw new ServiceUnavailableException('Chưa kiểm tra được địa chỉ, vui lòng thử lại sau ít phút');
+        }
+        if (!loc) throw new BadRequestException('Phường/xã không hợp lệ, vui lòng chọn lại địa chỉ');
+        return {
+            province: loc.province.name,
+            provinceId: loc.province.id,
+            wardId: loc.ward.id,
+            wardName: loc.ward.name,
+            street: dto.address,
+            address: `${dto.address}, ${loc.ward.name}, ${loc.province.name}`,
+        };
     }
 
     async createFromCart(userId: string, dto: CreateOrderDto, ip: string) {
@@ -39,6 +65,8 @@ export class OrdersService {
                         status: true,
                         type: true,
                         categoryId: true,
+                        sku: true,
+                        weightGram: true,
                         images: { where: { isPrimary: true }, take: 1, select: { imageUrl: true } },
                     },
                 },
@@ -153,7 +181,15 @@ export class OrdersService {
         }
 
         const subtotal = orderItems.reduce((s, i) => s + i.lineTotal, 0);
-        const shippingFee = await this.shipping.computeFee(subtotal, dto.province);
+        const addr = await this.resolveAddress(dto);
+        const lines: ParcelLine[] = items.map((it, idx) => ({
+            name: it.product.name,
+            code: it.product.sku,
+            quantity: it.quantity,
+            price: orderItems[idx].unitPrice,
+            weightGram: it.product.weightGram,
+        }));
+        const { fee: shippingFee } = await this.shipping.quote({ subtotal, lines, provinceName: addr.province, wardName: addr.wardName });
         const cp = await this.coupons.resolve(userId, subtotal, shippingFee, dto.productCouponCode, dto.shippingCouponCode);
         if (cp.errors.product) throw new BadRequestException(`Mã giảm giá: ${cp.errors.product}`);
         if (cp.errors.shipping) throw new BadRequestException(`Mã vận chuyển: ${cp.errors.shipping}`);
@@ -168,8 +204,7 @@ export class OrdersService {
                     userId,
                     recipientName: dto.recipientName,
                     phone: dto.phone,
-                    address: dto.address,
-                    province: dto.province,
+                    ...addr,
                     note: dto.note,
                     subtotal,
                     shippingFee,
@@ -244,7 +279,7 @@ export class OrdersService {
         const product = await this.prisma.product.findUnique({
             where: { id: dto.productId },
             select: {
-                id: true, name: true, price: true, salePrice: true, stockQuantity: true, status: true, type: true, categoryId: true,
+                id: true, name: true, price: true, salePrice: true, stockQuantity: true, status: true, type: true, categoryId: true, sku: true, weightGram: true,
                 images: { where: { isPrimary: true }, take: 1, select: { imageUrl: true } },
             },
         });
@@ -290,7 +325,13 @@ export class OrdersService {
         const image = variant?.imageUrl ?? product.images[0]?.imageUrl ?? null;
 
         const subtotal = unitPrice * qty;
-        const shippingFee = await this.shipping.computeFee(subtotal, dto.province);
+        const addr = await this.resolveAddress(dto);
+        const { fee: shippingFee } = await this.shipping.quote({
+            subtotal,
+            lines: [{ name: product.name, code: product.sku, quantity: qty, price: unitPrice, weightGram: product.weightGram }],
+            provinceName: addr.province,
+            wardName: addr.wardName,
+        });
         const cp = await this.coupons.resolve(userId, subtotal, shippingFee, dto.productCouponCode, dto.shippingCouponCode);
         if (cp.errors.product) throw new BadRequestException(`Mã giảm giá: ${cp.errors.product}`);
         if (cp.errors.shipping) throw new BadRequestException(`Mã vận chuyển: ${cp.errors.shipping}`);
@@ -305,8 +346,7 @@ export class OrdersService {
                     userId,
                     recipientName: dto.recipientName,
                     phone: dto.phone,
-                    address: dto.address,
-                    province: dto.province,
+                    ...addr,
                     note: dto.note,
                     subtotal, shippingFee, total,
                     discountAmount, shippingDiscount,
@@ -386,13 +426,14 @@ export class OrdersService {
                     orderBy: {
                         createdAt: 'asc'
                     }
-                }
+                },
+                shipmentEvents: { orderBy: { occurredAt: 'asc' } },
             }
         });
         if (!order) {
             throw new NotFoundException('Không tìm thấy đơn hàng');
         }
-        return order;
+        return { ...order, trackingUrl: order.trackingCode ? this.shipments.trackingUrl(order.trackingCode) : null };
     }
 
     async findByCode(code: string) {
@@ -481,13 +522,19 @@ export class OrdersService {
                     orderBy: {
                         createdAt: 'asc'
                     }
-                }
+                },
+                shipmentEvents: { orderBy: { occurredAt: 'asc' } },
             },
         });
         if (!order) {
             throw new NotFoundException('Không tìm thấy đơn hàng');
         }
-        return order;
+        return {
+            ...order,
+            trackingUrl: order.trackingCode ? this.shipments.trackingUrl(order.trackingCode) : null,
+            canShip: this.shipments.canShip(order),
+            carrierSandbox: this.shipments.sandbox,
+        };
     }
 
     private async restock(tx: Prisma.TransactionClient, items: { productId: string; variantId: string | null; quantity: number }[]) {
@@ -546,7 +593,7 @@ export class OrdersService {
             }
         }
     }
-    async updateStatus(id: string, status: OrderStatus, actor?: string) {
+    async updateStatus(id: string, status: OrderStatus, actor?: string, opts: { note?: string; carrier?: boolean } = {}) {
         const FORWARD: Record<OrderStatus, OrderStatus[]> = {
             PENDING: ['CONFIRMED', 'CANCELLED'],
             CONFIRMED: ['SHIPPING', 'CANCELLED'],
@@ -554,6 +601,7 @@ export class OrdersService {
             COMPLETED: [],
             CANCELLED: [],
         };
+        const CARRIER_EXTRA: Partial<Record<OrderStatus, OrderStatus[]>> = { SHIPPING: ['CANCELLED'] };
 
         const order = await this.prisma.order.findUnique({ where: { id }, include: { items: true } });
         if (!order) {
@@ -562,8 +610,25 @@ export class OrdersService {
         if (order.status === status) {
             return this.findOneAdmin(id);
         }
-        if (!FORWARD[order.status].includes(status)) {
+        const allowed = [...FORWARD[order.status], ...(opts.carrier ? CARRIER_EXTRA[order.status] ?? [] : [])];
+        if (!allowed.includes(status)) {
             throw new BadRequestException(`Không thể chuyển đơn từ "${order.status}" sang "${status}"`);
+        }
+
+        let shipment: Prisma.OrderUpdateInput = {};
+        let note = opts.note;
+        if (status === 'CONFIRMED' && !opts.carrier) {
+            if (order.paymentMethod === 'VNPAY' && order.paymentStatus !== 'PAID') {
+                throw new BadRequestException('Đơn VNPAY chưa thanh toán, chưa thể xác nhận');
+            }
+            if (!order.trackingCode && this.shipments.canShip(order)) {
+                shipment = await this.shipments.create(order);
+                note ??= `Đã tạo vận đơn GHN ${shipment.trackingCode as string}`;
+            }
+        }
+        if (status === 'CANCELLED' && !opts.carrier && order.trackingCode && order.shippingStatus !== 'cancel') {
+            await this.shipments.cancel(order.trackingCode);
+            shipment = { shippingStatus: 'cancel' };
         }
 
         if (status === 'CANCELLED') {
@@ -571,14 +636,14 @@ export class OrdersService {
                 await this.restock(tx, order.items);
                 await tx.order.update({
                     where: { id },
-                    data: { status: 'CANCELLED', ...(order.paymentStatus === 'PENDING' ? { paymentStatus: 'FAILED' } : {}) },
+                    data: { status: 'CANCELLED', ...shipment, ...(order.paymentStatus === 'PENDING' ? { paymentStatus: 'FAILED' } : {}) },
                 });
                 await tx.orderStatusHistory.create({
                     data: {
                         orderId: id,
                         status: 'CANCELLED',
                         changedBy: actor ?? 'Quản trị viên',
-                        note: 'Huỷ đơn & hoàn kho'
+                        note: note ?? 'Huỷ đơn & hoàn kho'
                     },
                 });
             });
@@ -586,7 +651,7 @@ export class OrdersService {
         }
 
         await this.prisma.$transaction(async (tx) => {
-            const data: Prisma.OrderUpdateInput = { status };
+            const data: Prisma.OrderUpdateInput = { status, ...shipment };
             if (status === 'COMPLETED' && order.paymentMethod === 'COD' && order.paymentStatus !== 'PAID') {
                 data.paymentStatus = 'PAID';
                 data.paidAt = new Date();
@@ -596,11 +661,110 @@ export class OrdersService {
                 await this.assignSerials(tx, order);
             }
             await tx.orderStatusHistory.create({
-                data: { orderId: id, status, changedBy: actor ?? 'Quản trị viên' },
+                data: { orderId: id, status, changedBy: actor ?? 'Quản trị viên', note },
             });
         });
         return this.findOneAdmin(id);
     }
+
+    async createShipment(id: string, actor?: string) {
+        const order = await this.prisma.order.findUnique({ where: { id }, include: { items: true } });
+        if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
+        if (order.status !== 'CONFIRMED') throw new BadRequestException('Chỉ tạo vận đơn cho đơn đã xác nhận');
+        if (order.trackingCode) throw new BadRequestException('Đơn đã có vận đơn GHN');
+        if (!this.shipments.canShip(order)) {
+            throw new BadRequestException('Đơn chưa có phường/xã theo địa chỉ mới nên không tạo được vận đơn GHN');
+        }
+        const shipment = await this.shipments.create(order);
+        await this.prisma.$transaction([
+            this.prisma.order.update({ where: { id }, data: shipment }),
+            this.prisma.orderStatusHistory.create({
+                data: { orderId: id, status: 'CONFIRMED', changedBy: actor ?? 'Quản trị viên', note: `Đã tạo vận đơn GHN ${shipment.trackingCode}` },
+            }),
+        ]);
+        return this.findOneAdmin(id);
+    }
+    async applyCarrierEvent(e: CarrierEvent, verify: boolean) {
+        const order = await this.shipments.findByCarrierCode(e);
+        if (!order) return { handled: false };
+        const backward = isBackward(order.shippingStatus, e.status);
+        if (backward && e.type === 'switch_status') return { handled: true, ignored: 'backward' };
+        const target = e.type === 'switch_status' ? carrierTarget(e.status, order.status) : null;
+        if (verify && (target === 'COMPLETED' || target === 'CANCELLED')) {
+            const live = await this.shipments.liveStatus(e.orderCode);
+            if (live.status !== e.status) return { handled: false };
+        }
+        if (!(await this.shipments.record(order.id, e, !backward))) return { handled: true, duplicate: true };
+        const label = GHN_STATUS_LABEL[e.status] ?? e.status;
+        if (target === 'COMPLETED' && order.status === 'CONFIRMED') {
+            await this.updateStatus(order.id, 'SHIPPING', 'GHN', { carrier: true, note: 'GHN: Đã lấy hàng' });
+        }
+        if (target) {
+            const refund = target === 'CANCELLED' && order.paymentStatus === 'PAID' ? ' · cần hoàn tiền cho khách' : '';
+            const note = target === 'CANCELLED' ? `GHN: ${label} · hoàn kho${refund}` : `GHN: ${label}`;
+            await this.updateStatus(order.id, target, 'GHN', { carrier: true, note });
+        }
+
+        const tpl = e.type === 'switch_status' ? CARRIER_NOTIFY[e.status] : undefined;
+        if (tpl) {
+            await this.prisma.notification.create({
+                data: {
+                    title: tpl.title(order.code),
+                    body: tpl.body(e),
+                    type: 'ORDER',
+                    audience: 'USER',
+                    userId: order.userId,
+                    linkUrl: `/orders/${order.id}`,
+                },
+            });
+        }
+        return { handled: true };
+    }
+
+    async syncShipment(id: string) {
+        const order = await this.prisma.order.findUnique({ where: { id }, select: { code: true, trackingCode: true, shippingStatus: true } });
+        if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
+        if (!order.trackingCode) throw new BadRequestException('Đơn chưa có vận đơn GHN');
+        const live = await this.shipments.liveStatus(order.trackingCode);
+        if (live.status !== order.shippingStatus) {
+            await this.applyCarrierEvent(
+                { orderCode: order.trackingCode, clientOrderCode: order.code, type: 'switch_status', status: live.status, time: new Date() },
+                false,
+            );
+        }
+        if (live.leadtime) {
+            await this.prisma.order.update({ where: { id }, data: { expectedDeliveryAt: new Date(live.leadtime) } });
+        }
+        return this.findOneAdmin(id);
+    }
+
+    async simulateShipment(id: string, status: string) {
+        if (!this.shipments.sandbox) throw new ForbiddenException('Chỉ giả lập được khi dùng GHN sandbox');
+        const order = await this.prisma.order.findUnique({ where: { id }, select: { code: true, trackingCode: true } });
+        if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
+        if (!order.trackingCode) throw new BadRequestException('Đơn chưa có vận đơn GHN');
+        await this.applyCarrierEvent({
+            orderCode: order.trackingCode,
+            clientOrderCode: order.code,
+            type: 'switch_status',
+            status,
+            reason: status === 'delivery_fail' ? 'Không liên lạc được người nhận (giả lập)' : undefined,
+            warehouse: ['picked', 'transporting'].includes(status) ? 'Bưu cục GHN Hà Nội (giả lập)' : undefined,
+            time: new Date(),
+        }, false);
+        return this.findOneAdmin(id);
+    }
+    async shipmentLive(id: string) {
+        const order = await this.prisma.order.findUnique({ where: { id }, select: { trackingCode: true } });
+        if (!order?.trackingCode) throw new BadRequestException('Đơn chưa có vận đơn GHN');
+        return this.shipments.liveStatus(order.trackingCode);
+    }
+    async shipmentLabel(id: string) {
+        const order = await this.prisma.order.findUnique({ where: { id }, select: { trackingCode: true } });
+        if (!order?.trackingCode) throw new BadRequestException('Đơn chưa có vận đơn GHN');
+        return { url: await this.shipments.printUrl(order.trackingCode) };
+    }
+
     async cancelMine(userId: string, id: string) {
         const order = await this.prisma.order.findFirst({ where: { id, userId }, include: { items: true } });
         if (!order) {
