@@ -1,0 +1,104 @@
+name: Build & Deploy
+
+# Push lên main → GitHub build 2 image Docker → đẩy lên GHCR → SSH vào VPS kéo image mới về chạy
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Source/**"
+      - "Development/docker/**"
+      - "Development/docker-compose.prod.yml"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - service: backend
+            context: Source/backend
+            dockerfile: Development/docker/backend.Dockerfile
+          - service: frontend
+            context: Source/frontend
+            dockerfile: Development/docker/frontend.Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      # GHCR bắt buộc tên image viết thường
+      - name: Đặt tên image
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/iotech-${{ matrix.service }}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          # Biến NEXT_PUBLIC_* được đóng cứng vào frontend lúc build (backend bỏ qua các build-arg này)
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_SITE_URL=${{ vars.NEXT_PUBLIC_SITE_URL }}
+            NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Đặt tiền tố image
+        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+
+      - name: Chép file compose lên VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          source: Development/docker-compose.prod.yml
+          target: /opt/iotech
+          strip_components: 1
+
+      - name: Kéo image mới và khởi động lại
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_PREFIX: ${{ env.IMAGE_PREFIX }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          envs: GHCR_USER,GHCR_TOKEN,IMAGE_PREFIX
+          script: |
+            set -e
+            cd /opt/iotech
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            IMAGE_PREFIX="$IMAGE_PREFIX" docker compose -f docker-compose.prod.yml pull
+            IMAGE_PREFIX="$IMAGE_PREFIX" docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            docker logout ghcr.io
+            docker image prune -f
