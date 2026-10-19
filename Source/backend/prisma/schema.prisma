@@ -224,6 +224,7 @@ model Product {
   slug          String        @unique
   description   String?
   price         Int
+  weightGram    Int           @default(300)
   salePrice     Int?
   stockQuantity Int           @default(0)
   status        ProductStatus @default(ACTIVE)
@@ -414,6 +415,10 @@ model Order {
   phone              String
   address            String
   province           String?
+  provinceId         Int?
+  wardId             Int?
+  wardName           String?
+  street             String?
   note               String?
   discountAmount     Int           @default(0)
   shippingDiscount   Int           @default(0)
@@ -426,6 +431,10 @@ model Order {
   paymentMethod      PaymentMethod
   paymentStatus      PaymentStatus @default(UNPAID)
   paidAt             DateTime?
+  trackingCode       String?       @unique
+  shippingStatus     String?
+  carrierFee         Int?
+  expectedDeliveryAt DateTime?
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
@@ -435,6 +444,7 @@ model Order {
   orderStatusHistories OrderStatusHistory[]
   supportTickets       SupportTicket[]
   reviews              Review[]
+  shipmentEvents       ShipmentEvent[]
 
   @@index([userId])
   @@map("orders")
@@ -458,6 +468,23 @@ model OrderItem {
 
   @@index([orderId])
   @@map("order_items")
+}
+
+model ShipmentEvent {
+  id         String   @id @default(uuid())
+  orderId    String
+  type       String
+  status     String
+  reason     String?
+  warehouse  String?
+  occurredAt DateTime
+  createdAt  DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, type, status, occurredAt])
+  @@index([orderId, occurredAt])
+  @@map("shipment_events")
 }
 
 model Serial {
