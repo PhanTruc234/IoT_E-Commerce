@@ -19,23 +19,39 @@ export interface OrderItem {
     quantity: number;
     lineTotal: number;
 }
+export interface ShipmentEvent {
+    id: string;
+    type: string;
+    status: string;
+    reason: string | null;
+    warehouse: string | null;
+    occurredAt: string;
+}
 export interface Order {
     id: string;
     code: string;
     recipientName: string;
     phone: string;
     address: string;
+    province: string | null;
+    wardName: string | null;
     note: string | null;
     subtotal: number;
     shippingFee: number;
+    shippingDiscount: number;
     total: number;
     status: OrderStatus;
     paymentMethod: PaymentMethod;
     paymentStatus: PaymentStatus;
     paidAt: string | null;
     createdAt: string;
+    trackingCode: string | null;
+    trackingUrl?: string | null;
+    shippingStatus: string | null;
+    expectedDeliveryAt: string | null;
     items: OrderItem[];
     orderStatusHistories?: OrderStatusHistory[];
+    shipmentEvents?: ShipmentEvent[];
 }
 export interface AdminOrderRow {
     id: string;
@@ -47,6 +63,8 @@ export interface AdminOrderRow {
     paymentMethod: PaymentMethod;
     paymentStatus: PaymentStatus;
     createdAt: string;
+    trackingCode: string | null;
+    shippingStatus: string | null;
     user: { fullName: string; email: string } | null;
     _count: { items: number };
 }
@@ -60,6 +78,9 @@ export interface AdminOrderListResponse {
     };
 }
 export interface AdminOrderDetail extends Order {
+    carrierFee: number | null;
+    canShip: boolean;
+    carrierSandbox: boolean;
     user: {
         fullName: string;
         email: string;

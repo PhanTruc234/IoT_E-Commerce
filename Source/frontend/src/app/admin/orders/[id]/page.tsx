@@ -14,6 +14,8 @@ import { useAdminOrder, useUpdateOrderStatus } from '@/features/orders/hooks/use
 import { NEXT_ACTIONS, ORDER_STATUS, PAYMENT_STATUS } from '@/features/orders/constants';
 import type { OrderStatus } from '@/features/orders/types';
 import { OrderTimeline } from '@/features/orders/components/order-timeline';
+import { ShipmentTracking } from '@/features/orders/components/shipment-tracking';
+import { ShipmentAdminPanel } from '@/features/orders/components/shipment-admin-panel';
 
 export default function AdminOrderDetailPage() {
     const { id } = useParams<{ id: string }>();
@@ -45,7 +47,8 @@ export default function AdminOrderDetailPage() {
                             <Button key={a.to} variant="secondary" size="sm" onClick={() => setCancelling(true)} disabled={update.isPending}>{a.label}</Button>
                         ) : (
                             <Button key={a.to} size="sm" onClick={() => doUpdate(a.to)} disabled={update.isPending}>
-                                {update.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}{a.label}
+                                {update.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                                {a.to === 'CONFIRMED' && order.canShip ? 'Xác nhận & tạo vận đơn GHN' : a.label}
                             </Button>
                         ),
                     )}
@@ -79,8 +82,9 @@ export default function AdminOrderDetailPage() {
                         </div>
                     </div>
                 </div>
-
+                <ShipmentTracking order={order} />
                 <div className="space-y-5">
+                    <ShipmentAdminPanel order={order} />
                     <div className="rounded-xl border border-gray-200 bg-white p-5 text-sm">
                         <p className="mb-2 text-xs font-semibold uppercase text-gray-400">Người nhận</p>
                         <p className="font-medium text-gray-800">{order.recipientName}</p>
@@ -106,7 +110,7 @@ export default function AdminOrderDetailPage() {
             <ConfirmDialog
                 open={cancelling}
                 title="Huỷ đơn hàng"
-                message={`Huỷ đơn "${order.code}"? Kho sẽ được hoàn lại các sản phẩm trong đơn.`}
+                message={`Huỷ đơn "${order.code}"? Kho sẽ được hoàn lại các sản phẩm trong đơn.${order.trackingCode ? ` Vận đơn GHN ${order.trackingCode} cũng sẽ bị huỷ.` : ''}`}
                 confirmText="Huỷ đơn"
                 error={update.isError ? getApiErrorMessage(update.error) : undefined}
                 loading={update.isPending}

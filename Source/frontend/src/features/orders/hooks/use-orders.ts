@@ -50,3 +50,29 @@ export function useCancelMyOrder() {
         },
     });
 }
+export function useShipmentAction(id: string) {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: (a: { kind: 'create' } | { kind: 'sync' } | { kind: 'simulate'; status: string }) =>
+            a.kind === 'create' ? ordersApi.createShipment(id)
+                : a.kind === 'sync' ? ordersApi.syncShipment(id)
+                    : ordersApi.simulateShipment(id, a.status),
+        onSuccess: (data) => {
+            qc.setQueryData(['admin', 'order', id], data);
+            qc.invalidateQueries({ queryKey: ['admin', 'orders'] });
+            qc.invalidateQueries({ queryKey: ['admin', 'order', id, 'ghn-live'] });
+        },
+    });
+}
+export function useShipmentLive(id: string, enabled: boolean) {
+    return useQuery({
+        queryKey: ['admin', 'order', id, 'ghn-live'],
+        queryFn: () => ordersApi.shipmentLive(id),
+        enabled,
+        staleTime: 30_000,
+        retry: 1,
+    });
+}
+export function useShipmentLabel(id: string) {
+    return useMutation({ mutationFn: () => ordersApi.shipmentLabel(id) });
+}

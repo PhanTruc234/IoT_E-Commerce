@@ -15,6 +15,7 @@ import { ReviewFormModal } from '@/features/reviews/components/review-form-modal
 import { OrderTimeline } from '@/features/orders/components/order-timeline';
 import { TicketFormModal } from '@/features/support/components/ticket-form-modal';
 import { TicketType } from '@/features/support/types';
+import { ShipmentTracking } from '@/features/orders/components/shipment-tracking';
 
 const STEPS: { key: OrderStatus; label: string }[] = [
     { key: 'PENDING', label: 'Chờ xác nhận' },
@@ -154,6 +155,11 @@ function OrderView() {
                     </div>
                 )}
             </div>
+            {order.trackingCode && (
+                <div className="mt-5">
+                    <ShipmentTracking order={order} />
+                </div>
+            )}
             {order.orderStatusHistories && order.orderStatusHistories.length > 0 && (
                 <div className="mt-5 rounded-xl border border-gray-200 bg-white p-6">
                     <h2 className="mb-4 text-sm font-semibold text-gray-700">Lịch sử đơn hàng</h2>

@@ -5,6 +5,8 @@ export interface CreateOrderBody {
     recipientName: string;
     phone: string;
     address: string;
+    provinceId?: number;
+    wardId?: number;
     province?: string;
     note?: string;
     productCouponCode?: string;
@@ -31,4 +33,10 @@ export const ordersApi = {
     adminGet: (id: string) => apiClient.get<AdminOrderDetail>(`/admin/orders/${id}`).then((r) => r.data),
     updateStatus: (id: string, status: OrderStatus) => apiClient.patch<AdminOrderDetail>(`/admin/orders/${id}/status`, { status }).then((r) => r.data),
     cancel: (id: string) => apiClient.patch<Order>(`/orders/${id}/cancel`).then((r) => r.data),
+    createShipment: (id: string) => apiClient.post<AdminOrderDetail>(`/admin/orders/${id}/shipment`).then((r) => r.data),
+    syncShipment: (id: string) => apiClient.post<AdminOrderDetail>(`/admin/orders/${id}/shipment/sync`).then((r) => r.data),
+    shipmentLive: (id: string) => apiClient.get<{ status: string; leadtime: string | null }>(`/admin/orders/${id}/shipment/live`).then((r) => r.data),
+    shipmentLabel: (id: string) => apiClient.get<{ url: string }>(`/admin/orders/${id}/shipment/label`).then((r) => r.data),
+    simulateShipment: (id: string, status: string) =>
+        apiClient.post<AdminOrderDetail>(`/admin/orders/${id}/shipment/simulate`, { status }).then((r) => r.data),
 };

@@ -66,7 +66,10 @@ export default function AdminOrdersPage() {
                                 )}
                                 {data!.data.map((o) => (
                                     <tr key={o.id} className="hover:bg-gray-50">
-                                        <td className="px-4 py-3 font-medium text-gray-800">{o.code}<span className="ml-2 text-xs text-gray-400">{o._count.items} SP</span></td>
+                                        <td className="px-4 py-3 font-medium text-gray-800">
+                                            {o.code}<span className="ml-2 text-xs text-gray-400">{o._count.items} SP</span>
+                                            {o.trackingCode && <span className="block font-mono text-[11px] font-normal text-orange-600">GHN · {o.trackingCode}</span>}
+                                        </td>
                                         <td className="px-4 py-3">
                                             <p className="text-gray-800">{o.recipientName}</p>
                                             <p className="text-xs text-gray-400">{o.phone}</p>
