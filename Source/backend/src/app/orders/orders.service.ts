@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException,
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateDirectOrderDto } from './dto/create-direct-order.dto';
-import { VnpayService } from './vnpay.service';
+import { PaymentsService, UNPAID_CANCEL_MIN } from './payments.service';
 import { OrderListQueryDto } from './dto/order-list-query.dto';
 import { OrderStatus, Prisma } from '@prisma/client';
 import { buildMeta } from 'src/core/utils/pagination.util';
@@ -16,7 +16,7 @@ import { CARRIER_NOTIFY, carrierTarget, GHN_STATUS_LABEL, isBackward, ShipmentsS
 export class OrdersService {
     constructor(
         private readonly prisma: PrismaService,
-        private readonly vnpay: VnpayService,
+        private readonly payments: PaymentsService,
         private readonly shipping: ShippingService,
         private readonly coupons: CouponsService,
         private readonly promotions: PromotionsService,
@@ -197,7 +197,7 @@ export class OrdersService {
         const shippingDiscount = cp.shippingDiscount;
         const total = Math.max(0, subtotal - discountAmount + (shippingFee - shippingDiscount));
 
-        const order = await this.prisma.$transaction(async (tx) => {
+        return this.prisma.$transaction(async (tx) => {
             const created = await tx.order.create({
                 data: {
                     code: this.genCode(),
@@ -266,13 +266,9 @@ export class OrdersService {
             if (cp.shippingCoupon) {
                 await this.coupons.markUsed(tx, cp.shippingCoupon.id, userId, created.id);
             }
-            return created;
+            const paymentUrl = created.paymentMethod === 'VNPAY' ? await this.payments.createAttempt(tx, created, ip, 1) : undefined;
+            return { order: created, paymentUrl };
         });
-        let paymentUrl: string | undefined;
-        if (order.paymentMethod === 'VNPAY') {
-            paymentUrl = this.vnpay.buildPaymentUrl({ code: order.code, amount: order.total, ip, orderInfo: `Thanh toán đơn ${order.code}` });
-        }
-        return { order, paymentUrl };
     }
     async createDirect(userId: string, dto: CreateDirectOrderDto, ip: string) {
         const qty = dto.quantity;
@@ -339,7 +335,7 @@ export class OrdersService {
         const shippingDiscount = cp.shippingDiscount;
         const total = Math.max(0, subtotal - discountAmount + (shippingFee - shippingDiscount));
 
-        const order = await this.prisma.$transaction(async (tx) => {
+        return this.prisma.$transaction(async (tx) => {
             const created = await tx.order.create({
                 data: {
                     code: this.genCode(),
@@ -376,14 +372,9 @@ export class OrdersService {
 
             if (cp.productCoupon) await this.coupons.markUsed(tx, cp.productCoupon.id, userId, created.id);
             if (cp.shippingCoupon) await this.coupons.markUsed(tx, cp.shippingCoupon.id, userId, created.id);
-            return created;
+            const paymentUrl = created.paymentMethod === 'VNPAY' ? await this.payments.createAttempt(tx, created, ip, 1) : undefined;
+            return { order: created, paymentUrl };
         });
-
-        let paymentUrl: string | undefined;
-        if (order.paymentMethod === 'VNPAY') {
-            paymentUrl = this.vnpay.buildPaymentUrl({ code: order.code, amount: order.total, ip, orderInfo: `Thanh toán đơn ${order.code}` });
-        }
-        return { order, paymentUrl };
     }
 
     async findMy(userId: string) {
@@ -395,27 +386,7 @@ export class OrdersService {
     }
 
     async repay(userId: string, id: string, ip: string) {
-        const order = await this.prisma.order.findFirst({ where: { id, userId } });
-        if (!order) {
-            throw new NotFoundException('Không tìm thấy đơn hàng');
-        }
-        if (order.paymentMethod !== 'VNPAY') {
-            throw new BadRequestException('Đơn này không dùng VNPAY');
-        }
-        if (order.paymentStatus === 'PAID') {
-            throw new BadRequestException('Đơn đã được thanh toán');
-        }
-        if (order.status !== 'PENDING') {
-            throw new BadRequestException('Đơn không thể thanh toán lại');
-        }
-        await this.prisma.order.update({ where: { id }, data: { paymentStatus: 'PENDING' } });
-        const paymentUrl = this.vnpay.buildPaymentUrl({
-            code: order.code,
-            amount: order.total,
-            ip,
-            orderInfo: `Thanh toan don ${order.code}`,
-        });
-        return { paymentUrl };
+        return this.payments.repay(userId, id, ip);
     }
 
     async findOne(userId: string, id: string) {
@@ -428,6 +399,7 @@ export class OrdersService {
                     }
                 },
                 shipmentEvents: { orderBy: { occurredAt: 'asc' } },
+                payments: { orderBy: { createdAt: 'asc' }, select: { status: true, amount: true, expiresAt: true, needsRefund: true, createdAt: true } },
             }
         });
         if (!order) {
@@ -436,44 +408,6 @@ export class OrdersService {
         return { ...order, trackingUrl: order.trackingCode ? this.shipments.trackingUrl(order.trackingCode) : null };
     }
 
-    async findByCode(code: string) {
-        return this.prisma.order.findUnique({ where: { code }, select: { id: true } });
-    }
-
-    async markPaid(code: string, success: boolean) {
-        const order = await this.prisma.order.findUnique({
-            where: {
-                code
-            },
-            select: {
-                paymentStatus: true
-            }
-        });
-        if (!order || order.paymentStatus === 'PAID') return;
-        await this.prisma.$transaction(async (tx) => {
-            const order = await tx.order.update({
-                where: { code },
-                data: success
-                    ? {
-                        paymentStatus: 'PAID',
-                        paidAt: new Date(),
-                        status: 'CONFIRMED'
-                    }
-                    : { paymentStatus: 'FAILED' },
-            });
-            if (success && order.status !== 'CONFIRMED') {
-                await tx.orderStatusHistory.create({
-                    data: {
-                        orderId: order.id,
-                        status: 'CONFIRMED',
-                        changedBy: 'Hệ thống',
-                        note: 'Thanh toán VNPAY thành công'
-                    },
-                });
-            }
-        })
-
-    }
     async findAllAdmin(query: OrderListQueryDto) {
         const { page, limit, search, status, paymentStatus } = query;
         const where: Prisma.OrderWhereInput = {
@@ -524,6 +458,13 @@ export class OrdersService {
                     }
                 },
                 shipmentEvents: { orderBy: { occurredAt: 'asc' } },
+                payments: {
+                    orderBy: { createdAt: 'asc' },
+                    select: {
+                        id: true, txnRef: true, amount: true, status: true, expiresAt: true, providerTxnNo: true,
+                        bankCode: true, responseCode: true, paidAt: true, needsRefund: true, checkedAt: true, createdAt: true,
+                    },
+                },
             },
         });
         if (!order) {
@@ -603,9 +544,17 @@ export class OrdersService {
         };
         const CARRIER_EXTRA: Partial<Record<OrderStatus, OrderStatus[]>> = { SHIPPING: ['CANCELLED'] };
 
-        const order = await this.prisma.order.findUnique({ where: { id }, include: { items: true } });
+        const load = () => this.prisma.order.findUnique({ where: { id }, include: { items: true } });
+        let order = await load();
         if (!order) {
             throw new NotFoundException('Không tìm thấy đơn hàng');
+        }
+        if (status === 'CANCELLED' && !opts.carrier && order.status === 'PENDING' && order.paymentMethod === 'VNPAY' && order.paymentStatus !== 'PAID') {
+            await this.payments.settleBeforeCancel(id);
+            order = (await load())!;
+            if (order.paymentStatus === 'PAID') {
+                throw new BadRequestException('Khách vừa thanh toán VNPAY thành công, đơn đã được xác nhận — kiểm tra lại trước khi huỷ');
+            }
         }
         if (order.status === status) {
             return this.findOneAdmin(id);
@@ -632,18 +581,26 @@ export class OrdersService {
         }
 
         if (status === 'CANCELLED') {
+            const cur = order;
+            const paidOnline = cur.paymentMethod === 'VNPAY' && cur.paymentStatus === 'PAID';
             await this.prisma.$transaction(async (tx) => {
-                await this.restock(tx, order.items);
-                await tx.order.update({
-                    where: { id },
-                    data: { status: 'CANCELLED', ...shipment, ...(order.paymentStatus === 'PENDING' ? { paymentStatus: 'FAILED' } : {}) },
+                // Chỉ request đổi được trạng thái mới hoàn kho → huỷ trùng (admin + khách + cron + GHN) không cộng kho 2 lần
+                const won = await tx.order.updateMany({
+                    where: { id, status: cur.status },
+                    data: { status: 'CANCELLED', ...(shipment as Prisma.OrderUpdateManyMutationInput), ...(cur.paymentStatus === 'PENDING' ? { paymentStatus: 'FAILED' } : {}) },
                 });
+                if (!won.count) return;
+                await this.restock(tx, cur.items);
+                if (paidOnline) {
+                    const paid = await tx.paymentTransaction.findFirst({ where: { orderId: id, status: 'SUCCESS' }, orderBy: { paidAt: 'desc' } });
+                    if (paid) await tx.paymentTransaction.update({ where: { id: paid.id }, data: { needsRefund: true } });
+                }
                 await tx.orderStatusHistory.create({
                     data: {
                         orderId: id,
                         status: 'CANCELLED',
                         changedBy: actor ?? 'Quản trị viên',
-                        note: note ?? 'Huỷ đơn & hoàn kho'
+                        note: (note ?? 'Huỷ đơn & hoàn kho') + (paidOnline && !note?.includes('hoàn tiền') ? ' · cần hoàn tiền VNPAY cho khách' : ''),
                     },
                 });
             });
@@ -766,19 +723,32 @@ export class OrdersService {
     }
 
     async cancelMine(userId: string, id: string) {
-        const order = await this.prisma.order.findFirst({ where: { id, userId }, include: { items: true } });
+        const load = () => this.prisma.order.findFirst({ where: { id, userId }, include: { items: true } });
+        let order = await load();
         if (!order) {
             throw new NotFoundException('Không tìm thấy đơn hàng');
         }
-        if (order.status !== 'PENDING') {
-            throw new BadRequestException('Chỉ có thể huỷ đơn khi đang chờ xác nhận');
+        if (order.status === 'PENDING' && order.paymentMethod === 'VNPAY' && order.paymentStatus !== 'PAID') {
+            await this.payments.settleBeforeCancel(id);
+            order = (await load())!;
         }
+        if (order.status === 'CANCELLED') {
+            return this.findOne(userId, id);
+        }
+        if (order.status !== 'PENDING') {
+            throw new BadRequestException(order.paymentStatus === 'PAID'
+                ? 'Đơn đã được thanh toán và xác nhận, vui lòng liên hệ hỗ trợ nếu muốn huỷ'
+                : 'Chỉ có thể huỷ đơn khi đang chờ xác nhận');
+        }
+        const items = order.items;
+        const paymentStatus = order.paymentStatus;
         await this.prisma.$transaction(async (tx) => {
-            await this.restock(tx, order.items);
-            await tx.order.update({
-                where: { id },
-                data: { status: 'CANCELLED', ...(order.paymentStatus === 'PENDING' ? { paymentStatus: 'FAILED' } : {}) },
+            const won = await tx.order.updateMany({
+                where: { id, status: 'PENDING', paymentStatus: { not: 'PAID' } },
+                data: { status: 'CANCELLED', ...(paymentStatus === 'PENDING' ? { paymentStatus: 'FAILED' } : {}) },
             });
+            if (!won.count) return;
+            await this.restock(tx, items);
             await tx.orderStatusHistory.create({
                 data: {
                     orderId: id,
@@ -789,5 +759,38 @@ export class OrdersService {
             });
         });
         return this.findOne(userId, id);
+    }
+
+    /** Cron: huỷ đơn VNPAY quá hạn chưa thanh toán. Trả về true nếu đơn được huỷ ở lần gọi này. */
+    async cancelUnpaid(id: string) {
+        const order = await this.prisma.order.findUnique({ where: { id }, include: { items: true } });
+        if (!order || order.status !== 'PENDING' || order.paymentStatus === 'PAID') return false;
+        return this.prisma.$transaction(async (tx) => {
+            const won = await tx.order.updateMany({
+                where: { id, status: 'PENDING', paymentStatus: { not: 'PAID' } },
+                data: { status: 'CANCELLED', paymentStatus: 'FAILED' },
+            });
+            if (!won.count) return false;
+            await this.restock(tx, order.items);
+            await tx.orderStatusHistory.create({
+                data: {
+                    orderId: id,
+                    status: 'CANCELLED',
+                    changedBy: 'Hệ thống',
+                    note: `Quá ${UNPAID_CANCEL_MIN} phút sau hạn thanh toán VNPAY · huỷ đơn & hoàn kho`,
+                },
+            });
+            await tx.notification.create({
+                data: {
+                    title: `Đơn ${order.code} đã tự huỷ`,
+                    body: 'Đơn hàng chưa được thanh toán VNPAY trong thời gian quy định nên đã được huỷ. Bạn có thể đặt lại bất cứ lúc nào.',
+                    type: 'ORDER',
+                    audience: 'USER',
+                    userId: order.userId,
+                    linkUrl: `/orders/${id}`,
+                },
+            });
+            return true;
+        });
     }
 }
