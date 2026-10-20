@@ -1,5 +1,5 @@
 'use client';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -12,6 +12,7 @@ import { Input } from '@/shared/ui/input';
 import { SearchSelect } from '@/shared/ui/search-select';
 import { formatVnd } from '@/shared/lib/format';
 import { getApiErrorMessage } from '@/shared/lib/api-error';
+import { isIdempotencyConflict, newIdempotencyKey } from '@/shared/lib/idempotency';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { useCreateOrder, useCreateDirectOrder } from '@/features/orders/hooks/use-orders';
 import { useBuyNowStore } from '@/features/orders/store/buy-now.store';
@@ -69,6 +70,8 @@ function CheckoutInner() {
     const ghnDown = provincesQ.isError;
     const create = useCreateOrder();
     const createDirect = useCreateDirectOrder();
+    // Giữ nguyên qua các lần bấm lại sau lỗi → nếu lần trước thật ra đã tạo đơn, server trả lại đúng đơn đó
+    const orderKey = useRef<string | null>(null);
     const buyNowItem = useBuyNowStore((s) => s.item);
     const clearBuyNow = useBuyNowStore((s) => s.clear);
 
@@ -145,6 +148,7 @@ function CheckoutInner() {
     const submitting = isBuyNow ? createDirect.isPending : create.isPending;
     const submitIsError = isBuyNow ? createDirect.isError : create.isError;
     const submitError = isBuyNow ? createDirect.error : create.error;
+    const rechecking = submitting && (isBuyNow ? createDirect.failureCount : create.failureCount) > 0;
 
     const onSubmit = (v: FormValues) => {
         const street = v.address.trim();
@@ -155,8 +159,14 @@ function CheckoutInner() {
             recipientName: v.recipientName, phone: v.phone, note: v.note, paymentMethod: v.paymentMethod, ...address,
             productCouponCode: productCode || undefined, shippingCouponCode: shippingCode || undefined,
         };
+        orderKey.current ??= newIdempotencyKey();
+        const key = orderKey.current;
         const handlers = {
+            onError: (e: unknown) => {
+                if (isIdempotencyConflict(e)) orderKey.current = null;
+            },
             onSuccess: ({ order, paymentUrl }: { order: { id: string }; paymentUrl?: string }) => {
+                orderKey.current = null;
                 if (v.addressMode === 'ghn') {
                     try { localStorage.setItem(ADDRESS_KEY, JSON.stringify({ provinceId: v.provinceId, wardId: v.wardId, street })); } catch { }
                 }
@@ -166,9 +176,9 @@ function CheckoutInner() {
             },
         };
         if (isBuyNow && buyNowItem) {
-            createDirect.mutate({ ...base, productId: buyNowItem.productId, variantId: buyNowItem.variantId, quantity: buyNowItem.quantity }, handlers);
+            createDirect.mutate({ body: { ...base, productId: buyNowItem.productId, variantId: buyNowItem.variantId, quantity: buyNowItem.quantity }, key }, handlers);
         } else {
-            create.mutate(base, handlers);
+            create.mutate({ body: base, key }, handlers);
         }
     };
 
@@ -418,7 +428,13 @@ function CheckoutInner() {
                             {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
                             {method === 'VNPAY' ? 'Thanh toán VNPAY' : 'Đặt hàng'}
                         </button>
-                        {submitIsError && <p className="mt-2 text-sm text-red-600">{getApiErrorMessage(submitError)}</p>}
+                        {rechecking && <p className="mt-2 text-sm text-amber-600">Mạng chập chờn, đang kiểm tra lại đơn hàng… vui lòng không tắt trang.</p>}
+                        {submitIsError && (
+                            <p className="mt-2 text-sm text-red-600">
+                                {getApiErrorMessage(submitError, 'Không kết nối được máy chủ. Bấm đặt hàng lại — hệ thống sẽ không tạo trùng đơn.')}
+                                {isIdempotencyConflict(submitError) && <> <Link href="/orders" className="underline">Xem đơn hàng của tôi</Link></>}
+                            </p>
+                        )}
                     </div>
                 </aside>
             </div>

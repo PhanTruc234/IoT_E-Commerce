@@ -3,16 +3,24 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ordersApi, type CreateOrderBody, type DirectOrderBody } from '../api/orders.api';
 import { useAuthStore } from '@/features/auth/store/auth.store';
 import { AdminOrderParams, OrderStatus } from '../types';
+import { isRetryableNetworkError } from '@/shared/lib/idempotency';
+
+// Gửi lại tối đa 2 lần khi lỗi mạng — an toàn vì cùng Idempotency-Key, server không tạo đơn thứ 2
+const orderRetry = { retry: (n: number, e: unknown) => n < 2 && isRetryableNetworkError(e), retryDelay: (n: number) => 1000 * 2 ** n };
 
 export function useCreateOrder() {
     const qc = useQueryClient();
     return useMutation({
-        mutationFn: (body: CreateOrderBody) => ordersApi.create(body),
+        mutationFn: ({ body, key }: { body: CreateOrderBody; key: string }) => ordersApi.create(body, key),
         onSuccess: () => qc.invalidateQueries({ queryKey: ['cart'] }),
+        ...orderRetry,
     });
 }
 export function useCreateDirectOrder() {
-    return useMutation({ mutationFn: (body: DirectOrderBody) => ordersApi.createDirect(body) });
+    return useMutation({
+        mutationFn: ({ body, key }: { body: DirectOrderBody; key: string }) => ordersApi.createDirect(body, key),
+        ...orderRetry,
+    });
 }
 export function useRepayOrder() {
     const qc = useQueryClient();

@@ -21,11 +21,16 @@ export interface DirectOrderBody extends CreateOrderBody {
 export interface CreateOrderResult {
     order: Order;
     paymentUrl?: string;
+    /** true khi server trả lại đơn đã tạo bởi request trước cùng Idempotency-Key */
+    replayed?: boolean;
 }
+// Đặt hàng gọi GHN + tính khuyến mãi nên có thể chậm; quá hạn thì gửi lại cùng Idempotency-Key
+const ORDER_TIMEOUT_MS = 20_000;
+const idem = (key: string) => ({ headers: { 'Idempotency-Key': key }, timeout: ORDER_TIMEOUT_MS });
 
 export const ordersApi = {
-    create: (body: CreateOrderBody) => apiClient.post<CreateOrderResult>('/orders', body).then((r) => r.data),
-    createDirect: (body: DirectOrderBody) => apiClient.post<CreateOrderResult>('/orders/direct', body).then((r) => r.data),
+    create: (body: CreateOrderBody, key: string) => apiClient.post<CreateOrderResult>('/orders', body, idem(key)).then((r) => r.data),
+    createDirect: (body: DirectOrderBody, key: string) => apiClient.post<CreateOrderResult>('/orders/direct', body, idem(key)).then((r) => r.data),
     list: () => apiClient.get<Order[]>('/orders').then((r) => r.data),
     get: (id: string) => apiClient.get<Order>(`/orders/${id}`).then((r) => r.data),
     repay: (id: string) => apiClient.post<{ paymentUrl: string }>(`/orders/${id}/repay`).then((r) => r.data),
