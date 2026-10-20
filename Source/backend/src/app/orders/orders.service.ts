@@ -13,6 +13,14 @@ import { applyPromotions, PromotionsService } from '../promotions/promotions.ser
 import { GhnError, GhnService, type ParcelLine } from '../shipping/ghn.service';
 import { CARRIER_NOTIFY, carrierTarget, GHN_STATUS_LABEL, isBackward, ShipmentsService, type CarrierEvent } from './shipments.service';
 
+const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
+    PENDING: 'Chờ xác nhận',
+    CONFIRMED: 'Đã xác nhận',
+    SHIPPING: 'Đang giao',
+    COMPLETED: 'Hoàn thành',
+    CANCELLED: 'Đã huỷ',
+};
+
 @Injectable()
 export class OrdersService {
     constructor(
@@ -574,6 +582,28 @@ export class OrdersService {
             }
         }
     }
+    /**
+     * Đổi trạng thái có điều kiện: chỉ thành công khi đơn VẪN đang ở `from` (kiểm tra ngay trong câu UPDATE).
+     * true  → request này thắng, được làm tiếp phần việc đi kèm (hoàn kho, gán serial, ghi lịch sử…).
+     * false → request khác vừa chuyển đơn sang đúng `to` rồi → coi như xong, không làm lại.
+     * Đơn đã sang trạng thái khác → 409.
+     */
+    private async transition(
+        tx: Prisma.TransactionClient,
+        id: string,
+        from: OrderStatus,
+        to: OrderStatus,
+        data: Prisma.OrderUpdateManyMutationInput = {},
+        where: Prisma.OrderWhereInput = {},
+    ): Promise<boolean> {
+        const r = await tx.order.updateMany({ where: { ...where, id, status: from }, data: { ...data, status: to } });
+        if (r.count) return true;
+        const cur = await tx.order.findUnique({ where: { id }, select: { status: true } });
+        if (cur?.status === to) return false;
+        const label = cur ? ORDER_STATUS_LABEL[cur.status] : 'không xác định';
+        throw new ConflictException(`Đơn vừa được chuyển sang "${label}" bởi thao tác khác, vui lòng tải lại trang`);
+    }
+
     async updateStatus(id: string, status: OrderStatus, actor?: string, opts: { note?: string; carrier?: boolean } = {}) {
         const FORWARD: Record<OrderStatus, OrderStatus[]> = {
             PENDING: ['CONFIRMED', 'CANCELLED'],
@@ -625,11 +655,11 @@ export class OrdersService {
             const paidOnline = cur.paymentMethod === 'VNPAY' && cur.paymentStatus === 'PAID';
             await this.prisma.$transaction(async (tx) => {
                 // Chỉ request đổi được trạng thái mới hoàn kho → huỷ trùng (admin + khách + cron + GHN) không cộng kho 2 lần
-                const won = await tx.order.updateMany({
-                    where: { id, status: cur.status },
-                    data: { status: 'CANCELLED', ...(shipment as Prisma.OrderUpdateManyMutationInput), ...(cur.paymentStatus === 'PENDING' ? { paymentStatus: 'FAILED' } : {}) },
+                const won = await this.transition(tx, id, cur.status, 'CANCELLED', {
+                    ...(shipment as Prisma.OrderUpdateManyMutationInput),
+                    ...(cur.paymentStatus === 'PENDING' ? { paymentStatus: 'FAILED' } : {}),
                 });
-                if (!won.count) return;
+                if (!won) return;
                 await this.restock(tx, cur.items);
                 if (paidOnline) {
                     const paid = await tx.paymentTransaction.findFirst({ where: { orderId: id, status: 'SUCCESS' }, orderBy: { paidAt: 'desc' } });
@@ -647,20 +677,30 @@ export class OrdersService {
             return this.findOneAdmin(id);
         }
 
-        await this.prisma.$transaction(async (tx) => {
-            const data: Prisma.OrderUpdateInput = { status, ...shipment };
-            if (status === 'COMPLETED' && order.paymentMethod === 'COD' && order.paymentStatus !== 'PAID') {
-                data.paymentStatus = 'PAID';
-                data.paidAt = new Date();
-            }
-            await tx.order.update({ where: { id }, data });
-            if (status === 'COMPLETED') {
-                await this.assignSerials(tx, order);
-            }
-            await tx.orderStatusHistory.create({
-                data: { orderId: id, status, changedBy: actor ?? 'Quản trị viên', note },
+        const cur = order;
+        try {
+            await this.prisma.$transaction(async (tx) => {
+                const data: Prisma.OrderUpdateManyMutationInput = { ...(shipment as Prisma.OrderUpdateManyMutationInput) };
+                if (status === 'COMPLETED' && cur.paymentMethod === 'COD' && cur.paymentStatus !== 'PAID') {
+                    data.paymentStatus = 'PAID';
+                    data.paidAt = new Date();
+                }
+                // Admin bấm + webhook GHN cùng lúc: chỉ 1 request gán serial / ghi lịch sử
+                if (!(await this.transition(tx, id, cur.status, status, data))) return;
+                if (status === 'COMPLETED') {
+                    await this.assignSerials(tx, cur);
+                }
+                await tx.orderStatusHistory.create({
+                    data: { orderId: id, status, changedBy: actor ?? 'Quản trị viên', note },
+                });
             });
-        });
+        } catch (e) {
+            // Vừa tạo vận đơn GHN mà đơn đã bị huỷ/đổi bởi thao tác khác → huỷ vận đơn vừa tạo để không bị mồ côi
+            if (e instanceof ConflictException && shipment.trackingCode) {
+                await this.shipments.cancel(shipment.trackingCode as string).catch(() => undefined);
+            }
+            throw e;
+        }
         return this.findOneAdmin(id);
     }
 
@@ -783,11 +823,10 @@ export class OrdersService {
         const items = order.items;
         const paymentStatus = order.paymentStatus;
         await this.prisma.$transaction(async (tx) => {
-            const won = await tx.order.updateMany({
-                where: { id, status: 'PENDING', paymentStatus: { not: 'PAID' } },
-                data: { status: 'CANCELLED', ...(paymentStatus === 'PENDING' ? { paymentStatus: 'FAILED' } : {}) },
-            });
-            if (!won.count) return;
+            const won = await this.transition(tx, id, 'PENDING', 'CANCELLED',
+                paymentStatus === 'PENDING' ? { paymentStatus: 'FAILED' } : {},
+                { paymentStatus: { not: 'PAID' } });
+            if (!won) return;
             await this.restock(tx, items);
             await tx.orderStatusHistory.create({
                 data: {
