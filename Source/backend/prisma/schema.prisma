@@ -50,6 +50,13 @@ enum PaymentStatus {
   FAILED
 }
 
+enum PaymentTxnStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  EXPIRED
+}
+
 enum SerialStatus {
   IN_STOCK
   ACTIVATED
@@ -445,9 +452,37 @@ model Order {
   supportTickets       SupportTicket[]
   reviews              Review[]
   shipmentEvents       ShipmentEvent[]
+  payments             PaymentTransaction[]
 
   @@index([userId])
   @@map("orders")
+}
+
+model PaymentTransaction {
+  id            String           @id @default(uuid())
+  orderId       String
+  provider      String           @default("VNPAY")
+  txnRef        String           @unique
+  amount        Int
+  status        PaymentTxnStatus @default(PENDING)
+  paymentUrl    String           @default("")
+  createDate    String
+  expiresAt     DateTime
+  providerTxnNo String?
+  bankCode      String?
+  responseCode  String?
+  paidAt        DateTime?
+  needsRefund   Boolean          @default(false)
+  checkedAt     DateTime?
+  raw           Json?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([status, expiresAt])
+  @@map("payment_transactions")
 }
 
 model OrderItem {
