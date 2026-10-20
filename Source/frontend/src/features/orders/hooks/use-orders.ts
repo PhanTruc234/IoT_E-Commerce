@@ -15,7 +15,12 @@ export function useCreateDirectOrder() {
     return useMutation({ mutationFn: (body: DirectOrderBody) => ordersApi.createDirect(body) });
 }
 export function useRepayOrder() {
-    return useMutation({ mutationFn: (id: string) => ordersApi.repay(id) });
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: (id: string) => ordersApi.repay(id),
+        // Lỗi thường do đơn vừa được đối soát là đã thanh toán → tải lại để hiện đúng trạng thái
+        onError: (_e, id) => qc.invalidateQueries({ queryKey: ['order', id] }),
+    });
 }
 export function useOrder(id: string) {
     return useQuery({ queryKey: ['order', id], queryFn: () => ordersApi.get(id), enabled: !!id });

@@ -3,7 +3,7 @@ import { Suspense, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Check, CheckCircle2, Star, XCircle } from 'lucide-react';
+import { ArrowLeft, Check, CheckCircle2, Clock, RotateCcw, Star, XCircle } from 'lucide-react';
 import { Badge } from '@/shared/ui/badge';
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
 import { formatVnd } from '@/shared/lib/format';
@@ -16,6 +16,9 @@ import { OrderTimeline } from '@/features/orders/components/order-timeline';
 import { TicketFormModal } from '@/features/support/components/ticket-form-modal';
 import { TicketType } from '@/features/support/types';
 import { ShipmentTracking } from '@/features/orders/components/shipment-tracking';
+
+// Khớp UNPAID_CANCEL_MIN ở backend (payments.service.ts)
+const AUTO_CANCEL_MIN = 30;
 
 const STEPS: { key: OrderStatus; label: string }[] = [
     { key: 'PENDING', label: 'Chờ xác nhận' },
@@ -39,6 +42,9 @@ function OrderView() {
 
     const currentIdx = STEPS.findIndex((s) => s.key === order.status);
     const isCancelled = order.status === 'CANCELLED';
+    const needsRefund = !!order.payments?.some((p) => p.needsRefund);
+    const lastExpiry = order.payments?.length ? Math.max(...order.payments.map((p) => new Date(p.expiresAt).getTime())) : null;
+    const autoCancelAt = lastExpiry ? new Date(lastExpiry + AUTO_CANCEL_MIN * 60_000) : null;
 
     return (
         <div className="mx-auto max-w-3xl px-4 py-8">
@@ -51,6 +57,12 @@ function OrderView() {
             )}
             {payment === 'failed' && (
                 <div className="mb-5 flex items-center gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700"><XCircle className="h-5 w-5" /> Thanh toán VNPAY thất bại hoặc đã huỷ.</div>
+            )}
+            {(payment === 'invalid' || payment === 'pending') && (
+                <div className="mb-5 flex items-center gap-2 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700"><Clock className="h-5 w-5" /> Chưa xác nhận được kết quả thanh toán. Hệ thống sẽ tự đối soát với VNPAY, vui lòng không thanh toán lại ngay.</div>
+            )}
+            {(payment === 'refund' || needsRefund) && (
+                <div className="mb-5 flex items-center gap-2 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700"><RotateCcw className="h-5 w-5" /> IoTech đã nhận tiền VNPAY nhưng đơn không còn hiệu lực — khoản tiền này sẽ được hoàn lại cho bạn.</div>
             )}
 
             <div className="rounded-xl border border-gray-200 bg-white p-6">
@@ -137,6 +149,11 @@ function OrderView() {
                     <div className="flex justify-between pt-1 text-base font-bold text-gray-900"><span>Tổng cộng</span><span className="text-blue-600">{formatVnd(order.total)}</span></div>
                 </div>
 
+                {order.status === 'PENDING' && order.paymentMethod === 'VNPAY' && order.paymentStatus !== 'PAID' && autoCancelAt && (
+                    <p className="mt-5 text-right text-xs text-gray-500">
+                        Mỗi link thanh toán có hiệu lực 15 phút. Đơn sẽ tự huỷ nếu chưa thanh toán trước {autoCancelAt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}.
+                    </p>
+                )}
                 {order.status === 'PENDING' && (
                     <div className="mt-5 flex items-center justify-end gap-2 border-t border-gray-100 pt-4">
                         {order.paymentMethod === 'VNPAY' && order.paymentStatus !== 'PAID' && (
@@ -154,6 +171,7 @@ function OrderView() {
                         </button>
                     </div>
                 )}
+                {repay.isError && <p className="mt-2 text-right text-sm text-red-600">{getApiErrorMessage(repay.error)}</p>}
             </div>
             {order.trackingCode && (
                 <div className="mt-5">

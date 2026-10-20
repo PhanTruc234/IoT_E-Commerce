@@ -1,4 +1,4 @@
-import type { OrderStatus, PaymentStatus } from './types';
+import type { OrderStatus, PaymentStatus, PaymentTxnStatus } from './types';
 
 export const ORDER_STATUS: Record<OrderStatus, { label: string; color: 'blue' | 'indigo' | 'amber' | 'green' | 'red' }> = {
     PENDING: { label: 'Chờ xác nhận', color: 'blue' },
@@ -12,6 +12,12 @@ export const PAYMENT_STATUS: Record<PaymentStatus, { label: string; color: 'gray
     PENDING: { label: 'Chờ thanh toán', color: 'amber' },
     PAID: { label: 'Đã thanh toán', color: 'green' },
     FAILED: { label: 'Thất bại', color: 'red' },
+};
+export const PAYMENT_TXN_STATUS: Record<PaymentTxnStatus, { label: string; color: 'gray' | 'amber' | 'green' | 'red' }> = {
+    PENDING: { label: 'Đang chờ', color: 'amber' },
+    SUCCESS: { label: 'Thành công', color: 'green' },
+    FAILED: { label: 'Thất bại', color: 'red' },
+    EXPIRED: { label: 'Hết hạn', color: 'gray' },
 };
 /** Nhãn trạng thái vận đơn GHN (khớp bảng mã trạng thái của GHN) */
 export const GHN_STATUS: Record<string, { label: string; tone: 'gray' | 'blue' | 'amber' | 'green' | 'red' }> = {

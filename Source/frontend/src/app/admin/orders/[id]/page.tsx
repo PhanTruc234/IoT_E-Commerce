@@ -11,7 +11,7 @@ import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
 import { getApiErrorMessage } from '@/shared/lib/api-error';
 import { formatVnd } from '@/shared/lib/format';
 import { useAdminOrder, useUpdateOrderStatus } from '@/features/orders/hooks/use-orders';
-import { NEXT_ACTIONS, ORDER_STATUS, PAYMENT_STATUS } from '@/features/orders/constants';
+import { NEXT_ACTIONS, ORDER_STATUS, PAYMENT_STATUS, PAYMENT_TXN_STATUS } from '@/features/orders/constants';
 import type { OrderStatus } from '@/features/orders/types';
 import { OrderTimeline } from '@/features/orders/components/order-timeline';
 import { ShipmentTracking } from '@/features/orders/components/shipment-tracking';
@@ -40,6 +40,7 @@ export default function AdminOrderDetailPage() {
                     <h1 className="text-xl font-bold text-gray-900">Đơn {order.code}</h1>
                     <Badge color={ORDER_STATUS[order.status].color}>{ORDER_STATUS[order.status].label}</Badge>
                     <Badge color={PAYMENT_STATUS[order.paymentStatus].color}>{PAYMENT_STATUS[order.paymentStatus].label}</Badge>
+                    {order.payments.some((p) => p.needsRefund) && <Badge color="red">Cần hoàn tiền</Badge>}
                 </div>
                 <div className="flex items-center gap-2">
                     {actions.map((a) =>
@@ -81,6 +82,31 @@ export default function AdminOrderDetailPage() {
                             <div className="flex justify-between pt-1 text-base font-bold text-gray-900"><span>Tổng cộng</span><span className="text-blue-600">{formatVnd(order.total)}</span></div>
                         </div>
                     </div>
+                    {order.payments.length > 0 && (
+                        <div className="rounded-xl border border-gray-200 bg-white">
+                            <div className="border-b border-gray-100 px-5 py-3 text-sm font-semibold text-gray-700">Giao dịch VNPAY</div>
+                            <ul className="divide-y divide-gray-50 text-sm">
+                                {order.payments.map((p) => (
+                                    <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3">
+                                        <span className="min-w-0">
+                                            <span className="font-mono text-xs text-gray-800">{p.txnRef}</span>
+                                            <span className="block text-xs text-gray-400">
+                                                Tạo {new Date(p.createdAt).toLocaleString('vi-VN')} · hết hạn {new Date(p.expiresAt).toLocaleTimeString('vi-VN')}
+                                                {p.providerTxnNo && ` · Mã GD VNPAY ${p.providerTxnNo}`}
+                                                {p.bankCode && ` · ${p.bankCode}`}
+                                                {p.checkedAt && ` · đối soát ${new Date(p.checkedAt).toLocaleTimeString('vi-VN')}`}
+                                            </span>
+                                        </span>
+                                        <span className="flex items-center gap-2">
+                                            <span className="text-gray-700">{formatVnd(p.amount)}</span>
+                                            <Badge color={PAYMENT_TXN_STATUS[p.status].color}>{PAYMENT_TXN_STATUS[p.status].label}</Badge>
+                                            {p.needsRefund && <Badge color="red">Cần hoàn tiền</Badge>}
+                                        </span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
                 </div>
                 <ShipmentTracking order={order} />
                 <div className="space-y-5">

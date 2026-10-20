@@ -1,6 +1,23 @@
 export type OrderStatus = 'PENDING' | 'CONFIRMED' | 'SHIPPING' | 'COMPLETED' | 'CANCELLED';
 export type PaymentMethod = 'COD' | 'VNPAY';
 export type PaymentStatus = 'UNPAID' | 'PENDING' | 'PAID' | 'FAILED';
+export type PaymentTxnStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'EXPIRED';
+export interface OrderPayment {
+    status: PaymentTxnStatus;
+    amount: number;
+    expiresAt: string;
+    needsRefund: boolean;
+    createdAt: string;
+}
+export interface AdminOrderPayment extends OrderPayment {
+    id: string;
+    txnRef: string;
+    providerTxnNo: string | null;
+    bankCode: string | null;
+    responseCode: string | null;
+    paidAt: string | null;
+    checkedAt: string | null;
+}
 export interface AdminOrderParams {
     page?: number;
     limit?: number;
@@ -52,6 +69,7 @@ export interface Order {
     items: OrderItem[];
     orderStatusHistories?: OrderStatusHistory[];
     shipmentEvents?: ShipmentEvent[];
+    payments?: OrderPayment[];
 }
 export interface AdminOrderRow {
     id: string;
@@ -81,6 +99,7 @@ export interface AdminOrderDetail extends Order {
     carrierFee: number | null;
     canShip: boolean;
     carrierSandbox: boolean;
+    payments: AdminOrderPayment[];
     user: {
         fullName: string;
         email: string;
