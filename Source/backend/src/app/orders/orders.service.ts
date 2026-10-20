@@ -5,6 +5,7 @@ import { CreateDirectOrderDto } from './dto/create-direct-order.dto';
 import { PaymentsService, UNPAID_CANCEL_MIN } from './payments.service';
 import { OrderListQueryDto } from './dto/order-list-query.dto';
 import { OrderStatus, Prisma } from '@prisma/client';
+import { IdempotencyService, type IdempotencyContext } from '../../core/idempotency/idempotency.service';
 import { buildMeta } from 'src/core/utils/pagination.util';
 import { ShippingService } from '../shipping/shipping.service';
 import { CouponsService } from '../coupons/coupons.service';
@@ -22,6 +23,7 @@ export class OrdersService {
         private readonly promotions: PromotionsService,
         private readonly ghn: GhnService,
         private readonly shipments: ShipmentsService,
+        private readonly idempotency: IdempotencyService,
     ) { }
 
     private genCode(): string {
@@ -62,7 +64,38 @@ export class OrdersService {
         };
     }
 
-    async createFromCart(userId: string, dto: CreateOrderDto, ip: string) {
+    /**
+     * Có Idempotency-Key: request trước cùng key đã tạo đơn → trả lại đơn đó (kèm link VNPAY còn hạn), không tạo đơn mới.
+     * Request song song cùng key: một request tạo đơn, request còn lại chờ rồi nhận lại đúng đơn đó.
+     */
+    private async idempotentCreate(
+        userId: string,
+        idem: IdempotencyContext | null,
+        place: (idem: IdempotencyContext | null) => Promise<{ order: { id: string }; paymentUrl?: string }>,
+    ) {
+        const hit = idem ? await this.idempotency.find(idem) : null;
+        if (hit?.resourceId) return this.replayCreate(userId, hit.resourceId);
+        try {
+            return await place(idem);
+        } catch (e) {
+            const rec = await this.idempotency.recover(idem, e);
+            return this.replayCreate(userId, rec.resourceId!);
+        }
+    }
+
+    private async replayCreate(userId: string, orderId: string) {
+        const order = await this.prisma.order.findFirst({ where: { id: orderId, userId }, include: { items: true } });
+        if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
+        const awaitingPayment = order.paymentMethod === 'VNPAY' && order.status === 'PENDING' && order.paymentStatus !== 'PAID';
+        const paymentUrl = awaitingPayment ? await this.payments.liveUrl(order.id) : undefined;
+        return { order, paymentUrl, replayed: true };
+    }
+
+    async createFromCart(userId: string, dto: CreateOrderDto, ip: string, idem: IdempotencyContext | null = null) {
+        return this.idempotentCreate(userId, idem, (ctx) => this.placeFromCart(userId, dto, ip, ctx));
+    }
+
+    private async placeFromCart(userId: string, dto: CreateOrderDto, ip: string, idem: IdempotencyContext | null) {
         const cart = await this.prisma.cart.findUnique({ where: { userId }, select: { id: true } });
         const items = cart ? await this.prisma.cartItem.findMany({
             where: { cartId: cart.id },
@@ -215,6 +248,7 @@ export class OrdersService {
         const total = Math.max(0, subtotal - discountAmount + (shippingFee - shippingDiscount));
 
         return this.prisma.$transaction(async (tx) => {
+            const idemId = idem ? await this.idempotency.claim(tx, idem) : null;
             const created = await tx.order.create({
                 data: {
                     code: this.genCode(),
@@ -266,10 +300,15 @@ export class OrdersService {
                 await this.coupons.markUsed(tx, cp.shippingCoupon.id, userId, created.id);
             }
             const paymentUrl = created.paymentMethod === 'VNPAY' ? await this.payments.createAttempt(tx, created, ip, 1) : undefined;
+            if (idemId) await this.idempotency.attach(tx, idemId, created.id);
             return { order: created, paymentUrl };
         });
     }
-    async createDirect(userId: string, dto: CreateDirectOrderDto, ip: string) {
+    async createDirect(userId: string, dto: CreateDirectOrderDto, ip: string, idem: IdempotencyContext | null = null) {
+        return this.idempotentCreate(userId, idem, (ctx) => this.placeDirect(userId, dto, ip, ctx));
+    }
+
+    private async placeDirect(userId: string, dto: CreateDirectOrderDto, ip: string, idem: IdempotencyContext | null) {
         const qty = dto.quantity;
         const product = await this.prisma.product.findUnique({
             where: { id: dto.productId },
@@ -335,6 +374,7 @@ export class OrdersService {
         const total = Math.max(0, subtotal - discountAmount + (shippingFee - shippingDiscount));
 
         return this.prisma.$transaction(async (tx) => {
+            const idemId = idem ? await this.idempotency.claim(tx, idem) : null;
             const created = await tx.order.create({
                 data: {
                     code: this.genCode(),
@@ -372,6 +412,7 @@ export class OrdersService {
             if (cp.productCoupon) await this.coupons.markUsed(tx, cp.productCoupon.id, userId, created.id);
             if (cp.shippingCoupon) await this.coupons.markUsed(tx, cp.shippingCoupon.id, userId, created.id);
             const paymentUrl = created.paymentMethod === 'VNPAY' ? await this.payments.createAttempt(tx, created, ip, 1) : undefined;
+            if (idemId) await this.idempotency.attach(tx, idemId, created.id);
             return { order: created, paymentUrl };
         });
     }

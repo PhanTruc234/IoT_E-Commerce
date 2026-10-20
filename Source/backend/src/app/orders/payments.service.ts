@@ -182,6 +182,16 @@ export class PaymentsService {
         }
     }
 
+    /** Link thanh toán còn dùng được của đơn (để trả lại khi client gửi lại request tạo đơn). */
+    async liveUrl(orderId: string) {
+        const t = await this.prisma.paymentTransaction.findFirst({
+            where: { orderId, status: 'PENDING', expiresAt: { gt: new Date(Date.now() + REUSE_MARGIN_MS) } },
+            orderBy: { createdAt: 'desc' },
+            select: { paymentUrl: true },
+        });
+        return t?.paymentUrl || undefined;
+    }
+
     async orderIdOf(txnRef: string) {
         const t = await this.prisma.paymentTransaction.findUnique({ where: { txnRef }, select: { orderId: true } });
         return t?.orderId ?? null;

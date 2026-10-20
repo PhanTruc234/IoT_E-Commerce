@@ -7,6 +7,7 @@ import { CategoriesModule } from './app/categories/categories.module';
 import { BrandsModule } from './app/brands/brands.module';
 import { UploadsModule } from './app/uploads/uploads.module';
 import { StorageModule } from './core/storage/storage.module';
+import { IdempotencyModule } from './core/idempotency/idempotency.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ProductsModule } from './app/products/products.module';
 import { SpecificationsModule } from './app/specifications/specifications.module';
@@ -41,6 +42,7 @@ import { AppThrottlerGuard } from './core/security/app-throttler.guard';
     PrismaModule,
     UsersModule,
     StorageModule,
+    IdempotencyModule,
     AuthModule,
     CategoriesModule,
     BrandsModule,

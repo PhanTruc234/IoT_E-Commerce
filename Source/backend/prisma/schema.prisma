@@ -485,6 +485,23 @@ model PaymentTransaction {
   @@map("payment_transactions")
 }
 
+// Chống tạo trùng khi client gửi lại cùng 1 yêu cầu (mất mạng, timeout, bấm 2 lần).
+// Luôn ghi bằng tx trong cùng transaction nghiệp vụ: đơn và record cùng lưu hoặc cùng rollback.
+model IdempotencyRecord {
+  id          String   @id @default(uuid())
+  userId      String
+  scope       String
+  key         String
+  requestHash String
+  resourceId  String?
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+
+  @@unique([userId, scope, key])
+  @@index([expiresAt])
+  @@map("idempotency_records")
+}
+
 model OrderItem {
   id           String  @id @default(uuid())
   orderId      String
