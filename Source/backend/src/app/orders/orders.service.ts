@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateDirectOrderDto } from './dto/create-direct-order.dto';
@@ -26,6 +26,18 @@ export class OrdersService {
 
     private genCode(): string {
         return `DH${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    }
+
+    /** Trừ kho có điều kiện: 2 đơn tranh nhau món cuối thì đơn sau rollback thay vì làm kho âm. */
+    private async takeStock(tx: Prisma.TransactionClient, kind: 'product' | 'variant', id: string, qty: number, name: string) {
+        const where = { id, stockQuantity: { gte: qty } };
+        const data = { stockQuantity: { decrement: qty } };
+        const r = kind === 'variant'
+            ? await tx.productVariant.updateMany({ where, data })
+            : await tx.product.updateMany({ where, data });
+        if (r.count !== 1) {
+            throw new ConflictException(`"${name}" vừa hết hàng hoặc không còn đủ số lượng, vui lòng kiểm tra lại`);
+        }
     }
 
     private async resolveAddress(dto: CreateOrderDto) {
@@ -113,6 +125,7 @@ export class OrdersService {
         }
         const variantDec = new Map<string, number>();
         const productDec = new Map<string, number>();
+        const stockName = new Map<string, string>();
         const orderItems: {
             productId: string;
             variantId: string | null;
@@ -164,19 +177,23 @@ export class OrdersService {
 
             if (v) {
                 variantDec.set(v.id, (variantDec.get(v.id) ?? 0) + it.quantity);
+                stockName.set(v.id, it.product.name);
             }
             else if (it.product.type === 'COMBO') {
                 for (const c of comboComps.get(it.productId) ?? []) {
                     const dec = c.quantity * it.quantity;
                     if (c.variantId) {
                         variantDec.set(c.variantId, (variantDec.get(c.variantId) ?? 0) + dec);
+                        stockName.set(c.variantId, it.product.name);
                     }
                     else {
                         productDec.set(c.componentId, (productDec.get(c.componentId) ?? 0) + dec);
+                        stockName.set(c.componentId, it.product.name);
                     }
                 }
             } else {
                 productDec.set(it.productId, (productDec.get(it.productId) ?? 0) + it.quantity);
+                stockName.set(it.productId, it.product.name);
             }
         }
 
@@ -224,28 +241,10 @@ export class OrdersService {
                 data: { orderId: created.id, status: 'PENDING', changedBy: 'Khách hàng', note: 'Đơn hàng được tạo' },
             });
             for (const [id, dec] of variantDec) {
-                await tx.productVariant.update({
-                    where: {
-                        id
-                    },
-                    data: {
-                        stockQuantity: {
-                            decrement: dec
-                        }
-                    }
-                });
+                await this.takeStock(tx, 'variant', id, dec, stockName.get(id) ?? 'Sản phẩm');
             }
             for (const [id, dec] of productDec) {
-                await tx.product.update({
-                    where: {
-                        id
-                    },
-                    data: {
-                        stockQuantity: {
-                            decrement: dec
-                        }
-                    }
-                });
+                await this.takeStock(tx, 'product', id, dec, stockName.get(id) ?? 'Sản phẩm');
             }
             for (const it of items) {
                 await tx.product.update({
@@ -358,15 +357,15 @@ export class OrdersService {
 
             // Trừ kho
             if (variant) {
-                await tx.productVariant.update({ where: { id: variant.id }, data: { stockQuantity: { decrement: qty } } });
+                await this.takeStock(tx, 'variant', variant.id, qty, product.name);
             } else if (product.type === 'COMBO') {
                 for (const c of comboComps) {
                     const dec = c.quantity * qty;
-                    if (c.variantId) await tx.productVariant.update({ where: { id: c.variantId }, data: { stockQuantity: { decrement: dec } } });
-                    else await tx.product.update({ where: { id: c.componentId }, data: { stockQuantity: { decrement: dec } } });
+                    if (c.variantId) await this.takeStock(tx, 'variant', c.variantId, dec, product.name);
+                    else await this.takeStock(tx, 'product', c.componentId, dec, product.name);
                 }
             } else {
-                await tx.product.update({ where: { id: product.id }, data: { stockQuantity: { decrement: qty } } });
+                await this.takeStock(tx, 'product', product.id, qty, product.name);
             }
             await tx.product.update({ where: { id: product.id }, data: { soldCount: { increment: qty } } });
 

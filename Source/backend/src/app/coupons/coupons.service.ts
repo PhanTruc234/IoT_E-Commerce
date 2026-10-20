@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Coupon, CouponType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCouponDto } from './dto/create-coupon.dto';
@@ -79,14 +79,29 @@ export class CouponsService {
         };
     }
 
-    /** Đánh dấu đã dùng — gọi trong transaction đặt hàng. */
+    /**
+     * Đánh dấu đã dùng — gọi trong transaction đặt hàng.
+     * Cập nhật có điều kiện: 2 đơn đặt cùng lúc với 1 mã thì đơn sau bị rollback thay vì vượt lượt dùng.
+     */
     async markUsed(tx: Prisma.TransactionClient, couponId: string, userId: string, orderId: string) {
-        await tx.coupon.update({ where: { id: couponId }, data: { usedCount: { increment: 1 } } });
-        await tx.userCoupon.upsert({
-            where: { userId_couponId: { userId, couponId } },
-            create: { userId, couponId, usedAt: new Date(), orderId },
-            update: { usedAt: new Date(), orderId },
+        const c = await tx.coupon.findUniqueOrThrow({ where: { id: couponId }, select: { code: true, usageLimit: true } });
+        const taken = await tx.coupon.updateMany({
+            where: { id: couponId, ...(c.usageLimit != null ? { usedCount: { lt: c.usageLimit } } : {}) },
+            data: { usedCount: { increment: 1 } },
         });
+        if (!taken.count) throw new ConflictException(`Mã ${c.code} vừa hết lượt sử dụng`);
+
+        const usedAt = new Date();
+        const claimed = await tx.userCoupon.updateMany({ where: { userId, couponId, usedAt: null }, data: { usedAt, orderId } });
+        if (claimed.count) return;
+        try {
+            await tx.userCoupon.create({ data: { userId, couponId, usedAt, orderId } });
+        } catch (e) {
+            if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+                throw new ConflictException(`Bạn đã dùng mã ${c.code} rồi`);
+            }
+            throw e;
+        }
     }
 
     // ----- Ví mã (khách) -----
