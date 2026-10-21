@@ -17,8 +17,6 @@ import { ProductQuestions } from '@/features/questions/components/product-questi
 import { ProductReviews } from '@/features/reviews/components/product-reviews';
 import { track } from '@/features/analytics/api/events.api';
 import { ProductPrice } from '@/features/promotions/components/product-price';
-import { useActivePromotions } from '@/features/promotions/hooks/use-promotions';
-import { effectivePrice } from '@/features/promotions/lib/pricing';
 import { useBuyNowStore } from '@/features/orders/store/buy-now.store';
 
 export function ProductDetailView({ product }: { product: PublicProductDetail }) {
@@ -43,7 +41,7 @@ export function ProductDetailView({ product }: { product: PublicProductDetail })
 
     const priceRange = useMemo(() => {
         if (!isVariable || product.variants.length === 0) return null;
-        const prices = product.variants.map((v) => v.salePrice ?? v.price);
+        const prices = product.variants.map((v) => v.pricing.finalPrice);
         return { min: Math.min(...prices), max: Math.max(...prices) };
     }, [isVariable, product.variants]);
 
@@ -52,21 +50,18 @@ export function ProductDetailView({ product }: { product: PublicProductDetail })
     const mainImage = selectedVariant?.imageUrl ?? gallery[thumb]?.imageUrl ?? gallery[0]?.imageUrl ?? null;
 
     let stock: number | null;
-    let basePrice: number;
-    let baseSale: number | null;
+    let pricing = product.pricing;
     if (isVariable) {
         if (selectedVariant) {
-            basePrice = selectedVariant.price;
-            baseSale = selectedVariant.salePrice ?? null;
+            pricing = selectedVariant.pricing;
             stock = selectedVariant.stockQuantity;
         } else {
-            basePrice = priceRange?.min ?? product.price;
-            baseSale = null;
+            // Chưa chọn phân loại: hiện giá của phân loại rẻ nhất
+            const cheapest = [...product.variants].sort((a, b) => a.pricing.finalPrice - b.pricing.finalPrice)[0];
+            if (cheapest) pricing = cheapest.pricing;
             stock = null;
         }
     } else {
-        basePrice = product.price;
-        baseSale = product.salePrice ?? null;
         stock = product.stockQuantity;
     }
 
@@ -74,7 +69,6 @@ export function ProductDetailView({ product }: { product: PublicProductDetail })
     const router = useRouter();
     const add = useAddToCart();
     const openCart = useCartUI((s) => s.setOpen);
-    const { data: promoRules } = useActivePromotions();
     const setBuyNow = useBuyNowStore((s) => s.set);
     const authStatus = useAuthStore((s) => s.status);
 
@@ -99,9 +93,8 @@ export function ProductDetailView({ product }: { product: PublicProductDetail })
             return;
         }
         if (cannotAdd) return;
-        const { final } = effectivePrice(promoRules ?? [], { id: product.id, price: basePrice, salePrice: baseSale, categoryId: product.category?.id });
         const variantLabel = selectedVariant ? selectedVariant.options.map((o) => `${o.option.attribute.name}: ${o.option.value}`).join(', ') : null;
-        setBuyNow({ productId: product.id, variantId: selectedVariant?.id, quantity: qty, name: product.name, image: mainImage, variantLabel, unitPrice: final });
+        setBuyNow({ productId: product.id, variantId: selectedVariant?.id, quantity: qty, name: product.name, image: mainImage, variantLabel, unitPrice: pricing.finalPrice });
         router.push('/checkout?buynow=1');
     };
     const lastTrackedProduct = useRef<string | null>(null);
@@ -152,10 +145,7 @@ export function ProductDetailView({ product }: { product: PublicProductDetail })
                         {isVariable && !selectedVariant && priceRange && priceRange.min !== priceRange.max ? (
                             <span className="text-3xl font-bold text-blue-600">{formatVnd(priceRange.min)} – {formatVnd(priceRange.max)}</span>
                         ) : (
-                            <ProductPrice
-                                product={{ id: product.id, price: basePrice, salePrice: baseSale, categoryId: product.category?.id }}
-                                size="lg"
-                            />
+                            <ProductPrice pricing={pricing} size="lg" />
                         )}
                     </div>
 

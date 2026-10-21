@@ -1,8 +1,9 @@
 import { apiClient } from '@/shared/lib/api-client';
+import type { PriceQuote } from '@/features/promotions/lib/pricing';
 
 export interface WishlistProduct {
     id: string; name: string; slug: string;
-    price: number; salePrice: number | null;
+    price: number; salePrice: number | null; pricing: PriceQuote;
     status: string; stockQuantity: number;
     image: string | null; addedAt: string;
 }

@@ -12,8 +12,9 @@ import { usePromotionMutations } from '@/features/promotions/hooks/use-promotion
 import type { PromotionInput } from '@/features/promotions/api/promotions.api';
 import { productsApi } from '@/features/products/api/products.api';
 import { uploadImages } from '@/features/uploads/api/uploads.api';
+import { PromotionRuleFields } from '@/features/promotions/components/promotion-rule-fields';
 
-const EMPTY: PromotionInput = { name: '', discountType: 'PERCENT', value: 10, scope: 'ALL', priority: 0, isActive: true, categoryIds: [], productIds: [] };
+const EMPTY: PromotionInput = { name: '', discountType: 'PERCENT', value: 10, scope: 'ALL', priority: 0, forcePriority: false, isActive: true, categoryIds: [], productIds: [], excludedProductIds: [] };
 
 export default function CreatePromotionPage() {
     const router = useRouter();
@@ -56,6 +57,7 @@ export default function CreatePromotionPage() {
             startAt: form.startAt ? new Date(form.startAt).toISOString() : undefined,
             categoryIds: form.scope === 'CATEGORY' ? form.categoryIds : [],
             productIds: form.scope === 'PRODUCT' ? form.productIds : [],
+            excludedProductIds: form.scope === 'PRODUCT' ? [] : form.excludedProductIds,
         };
         create.mutate(body, { onSuccess: () => router.push('/admin/promotions') });
     };
@@ -135,6 +137,8 @@ export default function CreatePromotionPage() {
                         </div>
                     </div>
                 )}
+
+                <PromotionRuleFields form={form} onChange={(patch) => setForm((f) => ({ ...f, ...patch }))} />
 
                 <div className="mt-4 flex gap-2">
                     <button onClick={submit} disabled={create.isPending || !form.name}

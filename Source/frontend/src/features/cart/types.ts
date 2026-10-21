@@ -7,6 +7,10 @@ export interface CartLine {
     slug: string;
     image: string | null;
     unitPrice: number;
+    /** Giá gốc — lớn hơn unitPrice khi đang được giảm */
+    listPrice: number;
+    priceSource: 'NONE' | 'SALE' | 'PROMOTION';
+    promotionName: string | null;
     variantLabel: string | null;
     stock: number;
     lineTotal: number;

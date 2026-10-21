@@ -13,6 +13,7 @@ import { useAdminPromotions, usePromotionMutations } from '@/features/promotions
 import type { PromotionInput } from '@/features/promotions/api/promotions.api';
 import { productsApi } from '@/features/products/api/products.api';
 import { uploadImages } from '@/features/uploads/api/uploads.api';
+import { PromotionRuleFields } from '@/features/promotions/components/promotion-rule-fields';
 
 function toLocalInput(iso: string | null | undefined): string {
     if (!iso) return '';
@@ -45,6 +46,7 @@ export default function EditPromotionPage() {
                 maxDiscount: promo.maxDiscount ?? undefined, scope: promo.scope, priority: promo.priority,
                 isActive: promo.isActive, startAt: toLocalInput(promo.startAt), endAt: toLocalInput(promo.endAt),
                 categoryIds: promo.categoryIds ?? [], productIds: promo.productIds ?? [],
+                forcePriority: promo.forcePriority, excludedProductIds: promo.excludedProductIds ?? [],
             });
         }
     }, [promo, form]);
@@ -77,6 +79,7 @@ export default function EditPromotionPage() {
             endAt: form.endAt ? new Date(form.endAt).toISOString() : undefined,
             categoryIds: form.scope === 'CATEGORY' ? form.categoryIds : [],
             productIds: form.scope === 'PRODUCT' ? form.productIds : [],
+            excludedProductIds: form.scope === 'PRODUCT' ? [] : form.excludedProductIds,
         };
         update.mutate({ id, body }, { onSuccess: () => router.push('/admin/promotions') });
     };
@@ -160,6 +163,12 @@ export default function EditPromotionPage() {
                         </div>
                     </div>
                 )}
+
+                <PromotionRuleFields
+                    form={form}
+                    onChange={(patch) => setForm((f) => (f ? { ...f, ...patch } : f))}
+                    excludedNames={Object.fromEntries((promo?.excludedProducts ?? []).map((p) => [p.id, p.name]))}
+                />
 
                 <div className="mt-4 flex gap-2">
                     <button onClick={submit} disabled={update.isPending || !form.name}

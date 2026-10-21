@@ -44,7 +44,7 @@ export default async function ProductDetailPage({ params }: Props) {
         offers: {
             '@type': 'Offer',
             priceCurrency: 'VND',
-            price: product.salePrice ?? product.price,
+            price: product.pricing.finalPrice,
             availability: product.stockQuantity > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
         },
     };

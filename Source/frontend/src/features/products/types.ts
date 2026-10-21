@@ -1,3 +1,4 @@
+import type { PriceQuote } from '@/features/promotions/lib/pricing';
 export type ProductStatus = 'ACTIVE' | 'INACTIVE' | 'OUT_OF_STOCK';
 export type ProductType = 'SIMPLE' | 'VARIABLE' | 'COMBO';
 export type ProductSortKey = 'newest' | 'price_asc' | 'price_desc' | 'best_selling';
@@ -36,9 +37,12 @@ export interface ProductListItem {
     slug: string;
     price: number;
     salePrice: number | null;
+    pricing: PriceQuote;
     stockQuantity: number;
     status: ProductStatus;
     type: ProductType;
+    ratingAvg: number;
+    ratingCount: number;
     category: { id: string; name: string; slug: string } | null;
     brand: { id: string; name: string; slug: string } | null;
     images: { imageUrl: string }[];
@@ -47,7 +51,8 @@ export interface ProductListItem {
 
 export interface ProductListResponse {
     data: ProductListItem[];
-    meta: { page: number; limit: number; total: number; totalPages: number };
+    /** priceRange: giá thực trả thấp/cao nhất của các SP khớp bộ lọc (bỏ qua khoảng giá) — chỉ có ở API trang khách */
+    meta: { page: number; limit: number; total: number; totalPages: number; priceRange?: { min: number; max: number } | null };
 }
 export interface ProductDetail extends Product {
     category: {
@@ -124,6 +129,7 @@ export interface PublicProductParams {
     brandId?: string;
     minPrice?: number;
     maxPrice?: number;
+    minRating?: number;
     sort?: ProductSortKey;
 }
 
@@ -157,7 +163,8 @@ export interface PublicProductDetail {
     images: ProductImage[];
     specifications: SpecValue[];
     attributes: ProductAttribute[];
-    variants: ProductVariant[];
+    variants: (ProductVariant & { pricing: PriceQuote })[];
+    pricing: PriceQuote;
 }
 export interface CompareResult {
     products: {
@@ -166,6 +173,7 @@ export interface CompareResult {
         slug: string;
         price: number;
         salePrice: number | null;
+        pricing: PriceQuote;
         brand: string | null;
         image: string | null
     }[];

@@ -32,7 +32,7 @@ export default function WishlistPage() {
                 ) : (
                     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
                         {data.map((p) => {
-                            const hasSale = p.salePrice != null && p.salePrice < p.price;
+                            const hasSale = p.pricing.finalPrice < p.pricing.listPrice;
                             return (
                                 <div key={p.id} className="group relative flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white">
                                     <button onClick={() => remove.mutate(p.id)} aria-label="Bỏ yêu thích"
@@ -47,8 +47,8 @@ export default function WishlistPage() {
                                         <div className="flex flex-1 flex-col p-3">
                                             <h3 className="line-clamp-2 flex-1 text-sm font-medium text-gray-800 group-hover:text-blue-600">{p.name}</h3>
                                             <div className="mt-2 flex items-baseline gap-2">
-                                                <span className="text-base font-bold text-blue-600">{formatVnd(hasSale ? p.salePrice! : p.price)}</span>
-                                                {hasSale && <span className="text-xs text-gray-400 line-through">{formatVnd(p.price)}</span>}
+                                                <span className="text-base font-bold text-blue-600">{formatVnd(p.pricing.finalPrice)}</span>
+                                                {hasSale && <span className="text-xs text-gray-400 line-through">{formatVnd(p.pricing.listPrice)}</span>}
                                             </div>
                                         </div>
                                     </Link>

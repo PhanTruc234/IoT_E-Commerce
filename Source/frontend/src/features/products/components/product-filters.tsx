@@ -1,37 +1,44 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Search } from 'lucide-react';
+import { Search, Star } from 'lucide-react';
 import { usePublicBrands, usePublicCategoryLeaves } from '../hooks/use-storefront';
 import { CategoryIcon } from '@/features/categories/components/category-icon';
+import { PriceRangeSlider } from './price-range-slider';
 
 export interface FilterValue {
     categoryId?: string;
     brandId?: string;
     minPrice?: string;
     maxPrice?: string;
+    minRating?: string;
 }
 interface Props {
     value: FilterValue;
     search?: string;
+    /** Giá thực trả thấp/cao nhất của các SP đang hiển thị — hai đầu thanh kéo */
+    priceRange?: { min: number; max: number } | null;
     onChange: (patch: Partial<Record<keyof FilterValue, string | undefined>>) => void;
     onSearch: (term: string) => void;
     onClear: () => void;
 }
-export function ProductFilters({ value, search, onChange, onSearch, onClear }: Props) {
+
+function Stars({ n }: { n: number }) {
+    return (
+        <span className="inline-flex">
+            {[1, 2, 3, 4, 5].map((i) => <Star key={i} className={`h-3.5 w-3.5 ${i <= n ? 'fill-amber-400 text-amber-400' : 'text-gray-300'}`} />)}
+        </span>
+    );
+}
+
+export function ProductFilters({ value, search, priceRange, onChange, onSearch, onClear }: Props) {
     const leaves = usePublicCategoryLeaves();
     const brands = usePublicBrands();
-    const [min, setMin] = useState(value.minPrice ?? '');
-    const [max, setMax] = useState(value.maxPrice ?? '');
     const [term, setTerm] = useState(search ?? '');
-    useEffect(() => {
-        setMin(value.minPrice ?? '');
-        setMax(value.maxPrice ?? '');
-    }, [value.minPrice, value.maxPrice]);
     useEffect(() => {
         setTerm(search ?? '');
     }, [search]);
 
-    const hasFilter = value.categoryId || value.brandId || value.minPrice || value.maxPrice || search;
+    const hasFilter = value.categoryId || value.brandId || value.minPrice || value.maxPrice || value.minRating || search;
 
     return (
         <div className="space-y-6 rounded-xl border border-gray-200 bg-white p-4">
@@ -98,21 +105,40 @@ export function ProductFilters({ value, search, onChange, onSearch, onClear }: P
             </div>
 
             <div>
-                <p className="mb-2 text-xs font-semibold uppercase text-gray-400">Khoảng giá (₫)</p>
-                <div className="flex items-center gap-2">
-                    <input type="number" min={0} value={min} onChange={(e) => setMin(e.target.value)} placeholder="Từ"
-                        className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm outline-none focus:border-blue-500" />
-                    <span className="text-gray-400">–</span>
-                    <input type="number" min={0} value={max} onChange={(e) => setMax(e.target.value)} placeholder="Đến"
-                        className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm outline-none focus:border-blue-500" />
-                </div>
-                <button
-                    type="button"
-                    onClick={() => onChange({ minPrice: min || undefined, maxPrice: max || undefined })}
-                    className="mt-2 w-full cursor-pointer rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800"
-                >
-                    Áp dụng
-                </button>
+                <p className="mb-1 text-xs font-semibold uppercase text-gray-400">Khoảng giá</p>
+                {priceRange ? (
+                    <PriceRangeSlider
+                        key={`${priceRange.min}-${priceRange.max}-${value.minPrice ?? ''}-${value.maxPrice ?? ''}`}
+                        min={priceRange.min}
+                        max={priceRange.max}
+                        value={{ min: value.minPrice ? Number(value.minPrice) : undefined, max: value.maxPrice ? Number(value.maxPrice) : undefined }}
+                        onCommit={(v) => onChange({ minPrice: v.min != null ? String(v.min) : undefined, maxPrice: v.max != null ? String(v.max) : undefined })}
+                    />
+                ) : (
+                    <p className="text-xs text-gray-400">Không có sản phẩm để lọc giá.</p>
+                )}
+            </div>
+
+            <div>
+                <p className="mb-2 text-xs font-semibold uppercase text-gray-400">Đánh giá</p>
+                <ul className="space-y-0.5">
+                    {[5, 4, 3, 2, 1].map((n) => {
+                        const active = value.minRating === String(n);
+                        return (
+                            <li key={n}>
+                                <button
+                                    type="button"
+                                    aria-pressed={active}
+                                    onClick={() => onChange({ minRating: active ? undefined : String(n) })}
+                                    className={`flex w-full cursor-pointer items-center gap-2 rounded px-2 py-1 text-left text-sm ${active ? 'bg-amber-50 font-medium text-amber-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                                >
+                                    <Stars n={n} />
+                                    {n < 5 && <span>trở lên</span>}
+                                </button>
+                            </li>
+                        );
+                    })}
+                </ul>
             </div>
         </div>
     );

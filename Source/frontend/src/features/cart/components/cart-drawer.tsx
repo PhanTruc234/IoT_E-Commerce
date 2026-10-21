@@ -52,7 +52,10 @@ export function CartDrawer() {
                                             {it.name}
                                         </Link>
                                         {it.variantLabel && <p className="text-xs text-indigo-600">{it.variantLabel}</p>}
-                                        <p className="mt-0.5 text-sm font-semibold text-blue-600">{formatVnd(it.unitPrice)}</p>
+                                        <p className="mt-0.5 text-sm font-semibold text-blue-600">
+                                            {formatVnd(it.unitPrice)}
+                                            {it.listPrice > it.unitPrice && <span className="ml-1.5 text-xs font-normal text-gray-400 line-through">{formatVnd(it.listPrice)}</span>}
+                                        </p>
                                         <div className="mt-2 flex items-center justify-between">
                                             <div className="flex items-center rounded-lg border border-gray-200">
                                                 <button onClick={() => update.mutate({ id: it.id, quantity: it.quantity - 1 })} disabled={it.quantity <= 1 || update.isPending} className="cursor-pointer px-2 py-1 text-gray-500 disabled:opacity-40"><Minus className="h-3.5 w-3.5" /></button>

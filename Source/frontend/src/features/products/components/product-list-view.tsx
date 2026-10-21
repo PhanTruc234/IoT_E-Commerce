@@ -25,6 +25,7 @@ export function ProductListView() {
     const brandId = sp.get('brandId') ?? undefined;
     const minPrice = sp.get('minPrice') ?? undefined;
     const maxPrice = sp.get('maxPrice') ?? undefined;
+    const minRating = sp.get('minRating') ?? undefined;
     const sort = (sp.get('sort') as ProductSortKey) ?? 'newest';
     const page = Number(sp.get('page') ?? '1') || 1;
 
@@ -37,9 +38,10 @@ export function ProductListView() {
             brandId,
             minPrice: minPrice ? Number(minPrice) : undefined,
             maxPrice: maxPrice ? Number(maxPrice) : undefined,
+            minRating: minRating ? Number(minRating) : undefined,
             sort,
         }),
-        [page, search, categoryId, brandId, minPrice, maxPrice, sort],
+        [page, search, categoryId, brandId, minPrice, maxPrice, minRating, sort],
     );
 
     const { data, isLoading, isError } = usePublicProducts(params);
@@ -67,7 +69,7 @@ export function ProductListView() {
         router.push(`/products?${next.toString()}`);
     };
 
-    const filterValue: FilterValue = { categoryId, brandId, minPrice, maxPrice };
+    const filterValue: FilterValue = { categoryId, brandId, minPrice, maxPrice, minRating };
     const total = data?.meta.total ?? 0;
     const totalPages = data?.meta.totalPages ?? 1;
 
@@ -81,6 +83,7 @@ export function ProductListView() {
                     <ProductFilters
                         value={filterValue}
                         search={search}
+                        priceRange={data?.meta.priceRange}
                         onChange={(patch) => setParams(patch)}
                         onSearch={(term) => setParams({ search: term || undefined })}
                         onClear={() => router.push('/products')} />

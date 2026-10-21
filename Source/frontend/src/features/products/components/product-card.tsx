@@ -2,25 +2,23 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Boxes, ImageIcon, Layers, Zap } from 'lucide-react';
+import { Boxes, ImageIcon, Layers, Star, Zap } from 'lucide-react';
 import type { ProductListItem } from '../types';
 import { CompareButton } from './compare-button';
 import { WishlistButton } from '@/features/wishlist/components/wishlist-button';
 import { ProductPrice } from '@/features/promotions/components/product-price';
+import { discountBadge } from '@/features/promotions/lib/pricing';
 import { useAuthStore } from '@/features/auth/store/auth.store';
-import { useActivePromotions } from '@/features/promotions/hooks/use-promotions';
-import { effectivePrice } from '@/features/promotions/lib/pricing';
 import { useBuyNowStore } from '@/features/orders/store/buy-now.store';
 
 export function ProductCard({ product }: { product: ProductListItem }) {
     const router = useRouter();
     const authStatus = useAuthStore((s) => s.status);
-    const { data: promoRules } = useActivePromotions();
     const setBuyNow = useBuyNowStore((s) => s.set);
     const img = product.images[0]?.imageUrl ?? null;
-    const hasSale = product.salePrice != null && product.salePrice < product.price;
+    const { listPrice, finalPrice } = product.pricing;
+    const hasDiscount = finalPrice < listPrice;
     const outOfStock = product.status === 'OUT_OF_STOCK' || product.stockQuantity <= 0;
-    const discount = hasSale ? Math.round((1 - product.salePrice! / product.price) * 100) : 0;
 
     const handleBuyNow = (e: React.MouseEvent) => {
         e.preventDefault();
@@ -30,8 +28,7 @@ export function ProductCard({ product }: { product: ProductListItem }) {
         // Sản phẩm có biến thể → vào trang chi tiết để chọn phân loại rồi mua
         if (product.type === 'VARIABLE') { router.push(`/products/${product.slug}`); return; }
         // Sản phẩm đơn giản / combo → mua trực tiếp (không đụng giỏ hàng)
-        const { final } = effectivePrice(promoRules ?? [], { id: product.id, price: product.price, salePrice: product.salePrice, categoryId: product.category?.id });
-        setBuyNow({ productId: product.id, quantity: 1, name: product.name, image: img, variantLabel: null, unitPrice: final });
+        setBuyNow({ productId: product.id, quantity: 1, name: product.name, image: img, variantLabel: null, unitPrice: finalPrice });
         router.push('/checkout?buynow=1');
     };
 
@@ -55,8 +52,8 @@ export function ProductCard({ product }: { product: ProductListItem }) {
                     </div>
                 )}
                 <div className="absolute left-2 top-2 flex flex-col gap-1">
-                    {hasSale && (
-                        <span className="rounded bg-red-500 px-1.5 py-0.5 text-[11px] font-semibold text-white">-{discount}%</span>
+                    {hasDiscount && (
+                        <span className="rounded bg-red-500 px-1.5 py-0.5 text-[11px] font-semibold text-white">{discountBadge(listPrice, finalPrice)}</span>
                     )}
                     {product.type === 'COMBO' && (
                         <span className="inline-flex items-center gap-0.5 rounded bg-amber-500 px-1.5 py-0.5 text-[11px] font-medium text-white">
@@ -84,8 +81,13 @@ export function ProductCard({ product }: { product: ProductListItem }) {
                 <h3 className="mt-0.5 line-clamp-2 flex-1 text-sm font-medium text-gray-800 group-hover:text-blue-600">
                     {product.name}
                 </h3>
+                {product.ratingCount > 0 && (
+                    <span className="mt-1 inline-flex items-center gap-0.5 text-[11px] text-gray-500">
+                        <Star className="h-3 w-3 fill-amber-400 text-amber-400" /> {product.ratingAvg.toFixed(1)} <span className="text-gray-400">({product.ratingCount})</span>
+                    </span>
+                )}
                 <div className="mt-2">
-                    <ProductPrice product={{ id: product.id, price: product.price, salePrice: product.salePrice, categoryId: product.category?.id }} size="sm" />
+                    <ProductPrice pricing={product.pricing} size="sm" badge={false} />
                 </div>
                 <button
                     type="button"

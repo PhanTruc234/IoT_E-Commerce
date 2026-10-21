@@ -66,8 +66,8 @@ export default function ComparePage() {
                                 <td className="p-3 font-medium text-gray-600">Giá</td>
                                 {data.products.map((p) => (
                                     <td key={p.id} className="border-l border-gray-100 p-3 text-center">
-                                        <span className="font-bold text-blue-600">{formatVnd(p.salePrice ?? p.price)}</span>
-                                        {p.salePrice != null && <span className="ml-1 text-xs text-gray-400 line-through">{formatVnd(p.price)}</span>}
+                                        <span className="font-bold text-blue-600">{formatVnd(p.pricing.finalPrice)}</span>
+                                        {p.pricing.finalPrice < p.pricing.listPrice && <span className="ml-1 text-xs text-gray-400 line-through">{formatVnd(p.pricing.listPrice)}</span>}
                                     </td>
                                 ))}
                             </tr>

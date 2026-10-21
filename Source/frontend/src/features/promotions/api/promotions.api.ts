@@ -7,20 +7,22 @@ export interface ActivePromotion {
     id: string; name: string; description: string | null;
     bannerImage: string | null; linkUrl: string | null;
     discountType: DiscountType; value: number; maxDiscount: number | null;
-    scope: PromotionScope; priority: number; endAt: string | null;
-    productIds: string[]; categoryIds: string[];
+    scope: PromotionScope; priority: number; forcePriority: boolean; endAt: string | null;
+    productIds: string[]; categoryIds: string[]; excludedProductIds: string[];
     startAt?: string | null;
     categories?: { id: string; name: string }[];
 }
 export interface AdminPromotion extends ActivePromotion {
     startAt: string | null; isActive: boolean; createdAt: string;
     _count: { products: number; categories: number };
+    excludedProducts: { id: string; name: string }[];
 }
 export interface PromotionInput {
     name: string; description?: string; bannerImage?: string; linkUrl?: string;
     discountType: DiscountType; value: number; maxDiscount?: number;
     scope: PromotionScope; productIds?: string[]; categoryIds?: string[];
     priority?: number; startAt?: string; endAt?: string; isActive?: boolean;
+    forcePriority?: boolean; excludedProductIds?: string[];
 }
 
 export const promotionsApi = {
