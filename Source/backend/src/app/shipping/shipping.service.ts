@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateZoneDto } from './dto/update-zone.dto';
 import { UpdateShippingSettingDto } from './dto/update-shipping-setting.dto';
 import { GhnService, insuranceFor, type ParcelLine } from './ghn.service';
+import { PricingService } from '../promotions/pricing.service';
 
 const DEFAULT_FREE_SHIP_FROM = 500_000;
 const FALLBACK_FEE = 35_000;
@@ -34,6 +35,7 @@ export class ShippingService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly ghn: GhnService,
+        private readonly pricing: PricingService,
     ) { }
 
     private async getSetting() {
@@ -114,12 +116,14 @@ export class ShippingService {
         const ids = [...new Set(args.items.map((i) => i.productId))];
         const products = await this.prisma.product.findMany({
             where: { id: { in: ids } },
-            select: { id: true, name: true, sku: true, weightGram: true, price: true, salePrice: true },
+            select: { id: true, name: true, sku: true, weightGram: true, price: true, salePrice: true, categoryId: true },
         });
         const map = new Map(products.map((p) => [p.id, p]));
+        const rules = await this.pricing.rules();
         const lines: ParcelLine[] = args.items.flatMap((i) => {
             const p = map.get(i.productId);
-            return p ? [{ name: p.name, code: p.sku, quantity: i.quantity, price: p.salePrice ?? p.price, weightGram: p.weightGram }] : [];
+            const price = p && this.pricing.quote(rules, { productId: p.id, categoryId: p.categoryId, price: p.price, salePrice: p.salePrice }).finalPrice;
+            return p ? [{ name: p.name, code: p.sku, quantity: i.quantity, price: price as number, weightGram: p.weightGram }] : [];
         });
 
         let place: { provinceName: string; wardName: string } | null = null;

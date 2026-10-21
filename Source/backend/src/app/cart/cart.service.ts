@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PricingService, type PriceSource } from '../promotions/pricing.service';
 import { AddCartItemDto } from './dto/add-cart-item.dto';
 
 type CartLineOut = {
@@ -12,6 +13,9 @@ type CartLineOut = {
     slug: string;
     image: string | null;
     unitPrice: number;
+    listPrice: number;
+    priceSource: PriceSource;
+    promotionName: string | null;
     variantLabel: string | null;
     stock: number;
     lineTotal: number;
@@ -19,7 +23,10 @@ type CartLineOut = {
 };
 @Injectable()
 export class CartService {
-    constructor(private readonly prisma: PrismaService) { }
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly pricing: PricingService,
+    ) { }
 
     // upsert theo userId (unique) → 2 request đầu tiên cùng lúc không tạo 2 giỏ / không lỗi 500
     private getOrCreate(userId: string) {
@@ -69,7 +76,7 @@ export class CartService {
             include: {
                 product: {
                     select: {
-                        id: true, name: true, slug: true, price: true, salePrice: true,
+                        id: true, name: true, slug: true, price: true, salePrice: true, categoryId: true,
                         stockQuantity: true, status: true, type: true,
                         images: { where: { isPrimary: true }, take: 1, select: { imageUrl: true } },
                     },
@@ -83,10 +90,17 @@ export class CartService {
             },
         });
 
+        const rules = await this.pricing.rules();
         const lines: CartLineOut[] = [];
         for (const it of items) {
             const v = it.variant;
-            const unitPrice = v ? (v.salePrice ?? v.price) : (it.product.salePrice ?? it.product.price);
+            const q = this.pricing.quote(rules, {
+                productId: it.productId,
+                categoryId: it.product.categoryId,
+                price: v ? v.price : it.product.price,
+                salePrice: v ? v.salePrice : it.product.salePrice,
+            });
+            const unitPrice = q.finalPrice;
             let stock: number;
             if (v) {
                 stock = v.stockQuantity;
@@ -106,6 +120,9 @@ export class CartService {
                 slug: it.product.slug,
                 image: v?.imageUrl ?? it.product.images[0]?.imageUrl ?? null,
                 unitPrice,
+                listPrice: q.listPrice,
+                priceSource: q.source,
+                promotionName: q.promotion?.name ?? null,
                 variantLabel,
                 stock,
                 lineTotal: unitPrice * it.quantity,

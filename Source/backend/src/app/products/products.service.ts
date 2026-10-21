@@ -12,6 +12,7 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductListQueryDto, ProductSort } from './dto/product-list-query.dto';
 import { buildSku } from 'src/core/utils/sku.util';
+import { PricingService, quotePrice } from '../promotions/pricing.service';
 
 const LIST_INCLUDE = {
     category: {
@@ -92,7 +93,7 @@ const DETAIL_INCLUDE = {
         include: {
             component: {
                 select: {
-                    id: true, name: true, slug: true, price: true, salePrice: true,
+                    id: true, name: true, slug: true, price: true, salePrice: true, categoryId: true,
                     images: { where: { isPrimary: true }, take: 1, select: { imageUrl: true } },
                 },
             },
@@ -102,7 +103,10 @@ const DETAIL_INCLUDE = {
 
 @Injectable()
 export class ProductsService {
-    constructor(private readonly prisma: PrismaService) { }
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly pricing: PricingService,
+    ) { }
 
     private async buildSlug(name: string, excludeId?: string): Promise<string> {
         const slug = createSlug(name) || 'san-pham';
@@ -162,7 +166,7 @@ export class ProductsService {
     }
 
     private buildWhere(query: ProductListQueryDto, publicOnly: boolean): Prisma.ProductWhereInput {
-        const { search, categoryId, brandId, status, minPrice, maxPrice } = query;
+        const { search, categoryId, brandId, status, minPrice, maxPrice, minRating } = query;
         const where: Prisma.ProductWhereInput = {};
         if (publicOnly) {
             where.status = ProductStatus.ACTIVE;
@@ -182,7 +186,11 @@ export class ProductsService {
                 { sku: { contains: search, mode: 'insensitive' } },
             ];
         }
-        if (minPrice != null || maxPrice != null) {
+        if (minRating != null) {
+            where.ratingAvg = { gte: minRating };
+        }
+        // Lọc giá theo giá niêm yết chỉ còn dùng cho trang admin; trang khách lọc theo giá thực trả (findPublic)
+        if (!publicOnly && (minPrice != null || maxPrice != null)) {
             where.price = {
                 ...(minPrice != null ? { gte: minPrice } : {}),
                 ...(maxPrice != null ? { lte: maxPrice } : {}),
@@ -305,6 +313,7 @@ export class ProductsService {
             throw new BadRequestException('Không đủ sản phẩm hợp lệ để so sánh');
         }
         const categoryIds = new Set(ordered.map((p) => p.categoryId));
+        const rules = await this.pricing.rules();
         if (categoryIds.size > 1) {
             throw new BadRequestException('Chỉ so sánh các sản phẩm trong cùng danh mục');
         }
@@ -330,6 +339,7 @@ export class ProductsService {
                 slug: p.slug,
                 price: p.price,
                 salePrice: p.salePrice,
+                pricing: this.pricing.quote(rules, { productId: p.id, categoryId: p.categoryId, price: p.price, salePrice: p.salePrice }),
                 brand: p.brand?.name ?? null,
                 image: p.images[0]?.imageUrl ?? null,
             })),
@@ -347,8 +357,47 @@ export class ProductsService {
         return { message: 'Đã ẩn sản phẩm' };
     }
 
+    /**
+     * Trang khách: lọc và sắp xếp theo GIÁ KHÁCH THỰC TRẢ (sau giảm riêng / khuyến mại, cùng hàm tính giá với giỏ & đơn).
+     * Giá thực trả phụ thuộc chương trình đang chạy nên không lọc được bằng SQL — tính trên bản rút gọn của các SP khớp
+     * bộ lọc rồi mới lấy chi tiết trang hiện tại. `meta.priceRange` = giá thấp/cao nhất của các SP khớp bộ lọc (bỏ qua
+     * khoảng giá) để làm hai đầu thanh kéo.
+     */
     async findPublic(query: ProductListQueryDto) {
-        return this.paginate(this.buildWhere(query, true), query);
+        const { page, limit, minPrice, maxPrice, sort } = query;
+        const where = this.buildWhere(query, true);
+        const [lite, rules] = await Promise.all([
+            this.prisma.product.findMany({
+                where,
+                select: { id: true, categoryId: true, price: true, salePrice: true, createdAt: true, soldCount: true },
+            }),
+            this.pricing.rules(),
+        ]);
+        const priced = lite.map((p) => ({
+            ...p,
+            final: quotePrice(rules, { productId: p.id, categoryId: p.categoryId, price: p.price, salePrice: p.salePrice }).finalPrice,
+        }));
+        const priceRange = priced.length
+            ? { min: Math.min(...priced.map((p) => p.final)), max: Math.max(...priced.map((p) => p.final)) }
+            : null;
+        const filtered = priced.filter((p) => (minPrice == null || p.final >= minPrice) && (maxPrice == null || p.final <= maxPrice));
+        const byNewest = (a: (typeof priced)[number], b: (typeof priced)[number]) => b.createdAt.getTime() - a.createdAt.getTime() || a.id.localeCompare(b.id);
+        filtered.sort((a, b) => {
+            switch (sort) {
+                case ProductSort.PRICE_ASC: return a.final - b.final || byNewest(a, b);
+                case ProductSort.PRICE_DESC: return b.final - a.final || byNewest(a, b);
+                case ProductSort.BEST_SELLING: return b.soldCount - a.soldCount || byNewest(a, b);
+                default: return byNewest(a, b);
+            }
+        });
+        const pageIds = filtered.slice((page - 1) * limit, page * limit).map((p) => p.id);
+        const rows = await this.prisma.product.findMany({ where: { id: { in: pageIds } }, include: LIST_INCLUDE });
+        const byId = new Map(rows.map((r) => [r.id, r]));
+        const data = pageIds.flatMap((id) => {
+            const r = byId.get(id);
+            return r ? [this.pricing.attach(rules, r)] : [];
+        });
+        return { data, meta: { ...buildMeta(filtered.length, page, limit), priceRange } };
     }
 
     async findAllAdmin(query: ProductListQueryDto) {
@@ -357,7 +406,7 @@ export class ProductsService {
 
     private async paginate(where: Prisma.ProductWhereInput, query: ProductListQueryDto) {
         const { page, limit } = query;
-        const [data, total] = await this.prisma.$transaction([
+        const [data, total, rules] = await Promise.all([
             this.prisma.product.findMany({
                 where,
                 include: LIST_INCLUDE,
@@ -366,8 +415,9 @@ export class ProductsService {
                 take: limit,
             }),
             this.prisma.product.count({ where }),
+            this.pricing.rules(),
         ]);
-        return { data, meta: buildMeta(total, page, limit) };
+        return { data: data.map((p) => this.pricing.attach(rules, p)), meta: buildMeta(total, page, limit) };
     }
 
     async findOne(id: string) {
@@ -378,7 +428,24 @@ export class ProductsService {
         if (!product) {
             throw new NotFoundException('Không tìm thấy sản phẩm');
         }
-        return product;
+        return this.withPricing(product);
+    }
+
+    /** Giá khách trả cho sản phẩm, từng phân loại và từng thành phần combo — đều qua hàm tính giá chung */
+    private async withPricing<P extends Prisma.ProductGetPayload<{ include: typeof DETAIL_INCLUDE }>>(product: P) {
+        const rules = await this.pricing.rules();
+        return {
+            ...this.pricing.attach(rules, product),
+            comboItems: product.comboItems.map((ci) => ({
+                ...ci,
+                component: {
+                    ...ci.component,
+                    pricing: this.pricing.quote(rules, {
+                        productId: ci.component.id, categoryId: ci.component.categoryId, price: ci.component.price, salePrice: ci.component.salePrice,
+                    }),
+                },
+            })),
+        };
     }
 
     async findBySlug(slug: string) {
@@ -392,6 +459,6 @@ export class ProductsService {
         void this.prisma.product
             .update({ where: { id: product.id }, data: { viewCount: { increment: 1 } } })
             .catch(() => null);
-        return product;
+        return this.withPricing(product);
     }
 }

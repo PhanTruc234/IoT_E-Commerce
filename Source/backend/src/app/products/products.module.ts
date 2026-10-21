@@ -11,8 +11,10 @@ import { ProductVariantsController } from './product-variants.controller';
 import { ProductVariantsService } from './product-variants.service';
 import { ComboItemsController } from './combo-items.controller';
 import { ComboItemsService } from './combo-items.service';
+import { PromotionsModule } from '../promotions/promotions.module';
 
 @Module({
+    imports: [PromotionsModule],
     controllers: [
         ProductsController,
         ProductImagesController,

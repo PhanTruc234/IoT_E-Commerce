@@ -33,8 +33,14 @@ export class CreatePromotionDto {
     @ApiPropertyOptional({ type: [String] }) @IsOptional() @IsArray() @IsString({ each: true })
     categoryIds?: string[];
 
-    @ApiPropertyOptional() @IsOptional() @IsInt()
+    @ApiPropertyOptional({ description: 'Độ ưu tiên — dùng khi nhiều chương trình cùng bật "Ưu tiên bắt buộc"' }) @IsOptional() @IsInt()
     priority?: number;
+
+    @ApiPropertyOptional({ description: 'Ưu tiên bắt buộc: luôn áp chương trình này dù giá không thấp nhất' }) @IsOptional() @IsBoolean()
+    forcePriority?: boolean;
+
+    @ApiPropertyOptional({ type: [String], description: 'Sản phẩm loại trừ khỏi chương trình' }) @IsOptional() @IsArray() @IsString({ each: true })
+    excludedProductIds?: string[];
 
     @ApiPropertyOptional() @IsOptional() @IsDateString()
     startAt?: string;

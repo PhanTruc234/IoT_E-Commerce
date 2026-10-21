@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { ProductStatus } from '@prisma/client';
 import { PaginationQueryDto } from '../../../core/dto/pagination-query.dto';
 
@@ -45,6 +45,14 @@ export class ProductListQueryDto extends PaginationQueryDto {
     @IsInt()
     @Min(0)
     maxPrice?: number;
+
+    @ApiPropertyOptional({ description: 'Lọc theo số sao trung bình: 5 = 5 sao, 4 = từ 4 sao trở lên…' })
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @Max(5)
+    minRating?: number;
 
     @ApiPropertyOptional({ enum: ProductSort, default: ProductSort.NEWEST })
     @IsOptional()

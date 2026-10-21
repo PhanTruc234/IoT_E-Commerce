@@ -1,17 +1,22 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ComboItemInputDto } from './dto/set-combo-items.dto';
+import { PricingService } from '../promotions/pricing.service';
 
 @Injectable()
 export class ComboItemsService {
-    constructor(private readonly prisma: PrismaService) { }
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly pricing: PricingService,
+    ) { }
 
     async findAll(comboId: string) {
         const combo = await this.prisma.product.findUnique({
             where: { id: comboId },
-            select: { id: true, price: true, salePrice: true },
+            select: { id: true, price: true, salePrice: true, categoryId: true },
         });
         if (!combo) throw new NotFoundException('Không tìm thấy sản phẩm');
+        const rules = await this.pricing.rules();
 
         const items = await this.prisma.comboItem.findMany({
             where: { comboId },
@@ -19,7 +24,7 @@ export class ComboItemsService {
             include: {
                 component: {
                     select: {
-                        id: true, name: true, slug: true, price: true, salePrice: true,
+                        id: true, name: true, slug: true, price: true, salePrice: true, categoryId: true,
                         stockQuantity: true, status: true, type: true,
                         images: { where: { isPrimary: true }, take: 1, select: { imageUrl: true } },
                     },
@@ -37,7 +42,12 @@ export class ComboItemsService {
 
         const lines = items.map((i) => {
             const v = i.variant;
-            const unitPrice = v ? (v.salePrice ?? v.price) : (i.component.salePrice ?? i.component.price);
+            const unitPrice = this.pricing.quote(rules, {
+                productId: i.component.id,
+                categoryId: i.component.categoryId,
+                price: v ? v.price : i.component.price,
+                salePrice: v ? v.salePrice : i.component.salePrice,
+            }).finalPrice;
             const stock = v ? v.stockQuantity : i.component.stockQuantity;
             const image = v?.imageUrl ?? i.component.images[0]?.imageUrl ?? null;
             const variantLabel = v
@@ -50,7 +60,7 @@ export class ComboItemsService {
             ? Math.min(...lines.map((l) => Math.floor(l.stock / l.i.quantity)))
             : 0;
         const originalPrice = lines.reduce((sum, l) => sum + l.unitPrice * l.i.quantity, 0);
-        const comboPrice = combo.salePrice ?? combo.price;
+        const comboPrice = this.pricing.quote(rules, { productId: combo.id, categoryId: combo.categoryId, price: combo.price, salePrice: combo.salePrice }).finalPrice;
 
         return {
             comboPrice,

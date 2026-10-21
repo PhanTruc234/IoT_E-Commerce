@@ -83,33 +83,49 @@ export class ReviewsService {
         return { data, meta: buildMeta(total, page, limit) };
     }
 
+    /** Tính lại số sao trung bình + số lượt đánh giá (chỉ đánh giá đã duyệt) — chạy trong cùng transaction với thay đổi. */
+    private async syncRating(tx: Prisma.TransactionClient, productId: string) {
+        const agg = await tx.review.aggregate({ where: { productId, status: 'APPROVED' }, _avg: { rating: true }, _count: { _all: true } });
+        await tx.product.update({
+            where: { id: productId },
+            data: { ratingAvg: Math.round((agg._avg.rating ?? 0) * 100) / 100, ratingCount: agg._count._all },
+        });
+    }
+
     async setStatus(id: string, status: 'APPROVED' | 'REJECTED', reason?: ReviewModerationReason) {
-        const r = await this.prisma.review.findUnique({ where: { id }, select: { id: true } });
+        const r = await this.prisma.review.findUnique({ where: { id }, select: { id: true, productId: true } });
         if (!r) {
             throw new NotFoundException('Không tìm thấy đánh giá');
         }
         if (status === 'REJECTED' && !reason) {
             throw new BadRequestException('Vui lòng chọn lý do từ chối');
         }
-        return this.prisma.review.update({
-            where: { id },
-            data: {
-                status,
-                approvedAt: status === 'APPROVED' ? new Date() : null,
-                moderationReason: status === 'REJECTED' ? reason : null,
-            },
+        return this.prisma.$transaction(async (tx) => {
+            const updated = await tx.review.update({
+                where: { id },
+                data: {
+                    status,
+                    approvedAt: status === 'APPROVED' ? new Date() : null,
+                    moderationReason: status === 'REJECTED' ? reason : null,
+                },
+            });
+            await this.syncRating(tx, r.productId);
+            return updated;
         });
     }
 
     async remove(id: string, reason?: ReviewModerationReason) {
-        const r = await this.prisma.review.findUnique({ where: { id }, select: { id: true } });
+        const r = await this.prisma.review.findUnique({ where: { id }, select: { id: true, productId: true } });
         if (!r) {
             throw new NotFoundException('Không tìm thấy đánh giá');
         }
         if (!reason) {
             throw new BadRequestException('Vui lòng chọn lý do xoá');
         }
-        await this.prisma.review.delete({ where: { id } });
+        await this.prisma.$transaction(async (tx) => {
+            await tx.review.delete({ where: { id } });
+            await this.syncRating(tx, r.productId);
+        });
         return { message: 'Đã xoá đánh giá' };
     }
 }

@@ -1,9 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PricingService } from '../promotions/pricing.service';
 
 @Injectable()
 export class WishlistService {
-    constructor(private readonly prisma: PrismaService) { }
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly pricing: PricingService,
+    ) { }
 
     async list(userId: string) {
         const rows = await this.prisma.wishlist.findMany({
@@ -13,12 +17,13 @@ export class WishlistService {
                 createdAt: true,
                 product: {
                     select: {
-                        id: true, name: true, slug: true, price: true, salePrice: true, status: true, stockQuantity: true,
+                        id: true, name: true, slug: true, price: true, salePrice: true, categoryId: true, status: true, stockQuantity: true,
                         images: { where: { isPrimary: true }, take: 1, select: { imageUrl: true } },
                     },
                 },
             },
         });
+        const rules = await this.pricing.rules();
         return rows.map((r) => ({
             addedAt: r.createdAt,
             id: r.product.id,
@@ -26,6 +31,7 @@ export class WishlistService {
             slug: r.product.slug,
             price: r.product.price,
             salePrice: r.product.salePrice,
+            pricing: this.pricing.quote(rules, { productId: r.product.id, categoryId: r.product.categoryId, price: r.product.price, salePrice: r.product.salePrice }),
             status: r.product.status,
             stockQuantity: r.product.stockQuantity,
             image: r.product.images[0]?.imageUrl ?? null,
