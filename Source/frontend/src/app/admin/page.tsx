@@ -1,188 +1,241 @@
 'use client';
+import { useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
-import { AlertTriangle, Clock, DollarSign, ImageIcon, MessageCircleQuestion, Package, ShoppingCart, Star, Users } from 'lucide-react';
+import {
+    BadgePercent, Boxes, ClipboardList, MousePointerClick, Percent, ShoppingBag, ShoppingCart, Truck, Users,
+} from 'lucide-react';
 import { Spinner } from '@/shared/ui/spinner';
-import { Badge } from '@/shared/ui/badge';
 import { formatVnd } from '@/shared/lib/format';
 import { getApiErrorMessage } from '@/shared/lib/api-error';
 import { useOverview } from '@/features/overview/hooks/use-overview';
-import { ORDER_STATUS } from '@/features/orders/constants';
+import type { OverviewRange } from '@/features/overview/api/overview.api';
+import { BarList, DailyChart, Delta, PeriodBar, PRESETS, Section, Stat, TodoTile, fmtDay } from '@/features/overview/components/dashboard-ui';
+import { ORDER_STATUS, ghnStatus } from '@/features/orders/constants';
 
-function RevenueChart({ data }: { data: { date: string; revenue: number }[] }) {
-    const max = Math.max(1, ...data.map((d) => d.revenue));
-    const W = 900;
-    const H = 200;
-    const pad = 28;
-    const bw = (W - pad * 2) / Math.max(1, data.length);
-    return (
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
-            {data.map((d, i) => {
-                const h = (d.revenue / max) * (H - pad * 2);
-                const x = pad + i * bw;
-                return (
-                    <g key={i}>
-                        <rect x={x + 3} y={H - pad - h} width={Math.max(2, bw - 6)} height={h} fill="#3b82f6" rx={3}>
-                            <title>{d.date}: {formatVnd(d.revenue)}</title>
-                        </rect>
-                        {i % 2 === 0 && (
-                            <text x={x + bw / 2} y={H - 8} fontSize="9" textAnchor="middle" fill="#9ca3af">{d.date}</text>
-                        )}
-                    </g>
-                );
-            })}
-        </svg>
-    );
-}
-
-function Kpi({ icon: Icon, label, value, tone = 'blue' }: { icon: React.ElementType; label: string; value: string; tone?: 'blue' | 'green' | 'amber' | 'gray' }) {
-    const tones: Record<string, string> = {
-        blue: 'bg-blue-50 text-blue-600',
-        green: 'bg-green-50 text-green-600',
-        amber: 'bg-amber-50 text-amber-600',
-        gray: 'bg-gray-100 text-gray-600',
-    };
-    return (
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-            <div className="flex items-center gap-3">
-                <span className={`flex h-10 w-10 items-center justify-center rounded-lg ${tones[tone]}`}>
-                    <Icon className="h-5 w-5" />
-                </span>
-                <div>
-                    <p className="text-xs text-gray-500">{label}</p>
-                    <p className="text-lg font-bold text-gray-900">{value}</p>
-                </div>
-            </div>
-        </div>
-    );
-}
+const num = (n: number) => n.toLocaleString('vi-VN');
+const pct = (n: number) => `${n.toLocaleString('vi-VN', { maximumFractionDigits: 1 })}%`;
 
 export default function AdminDashboardPage() {
-    const { data, isLoading, isError, error } = useOverview();
+    const [range, setRange] = useState<OverviewRange>(() => PRESETS[2].range());
+    const { data, isLoading, isError, error, isFetching } = useOverview(range);
 
-    if (isLoading) {
-        return <div className="flex justify-center py-20"><Spinner /></div>;
+    if (isLoading) return <div className="flex justify-center py-16"><Spinner /></div>;
+    if (!data) {
+        // Vẫn giữ thanh chọn kỳ để chọn lại được khi lỗi
+        return (
+            <div>
+                <h1 className="mb-4 text-xl font-bold text-gray-900">Tổng quan</h1>
+                <PeriodBar value={range} onChange={setRange} loading={isFetching} />
+                <p className="text-sm text-red-600">{isError ? getApiErrorMessage(error) : 'Không tải được số liệu'}</p>
+            </div>
+        );
     }
-    if (isError || !data) {
-        return <div className="p-6 text-sm text-red-600">{getApiErrorMessage(error)}</div>;
-    }
-
-    const { kpis, moderation, statusBreakdown, revenueTrend, topProducts, lowStock, recentOrders } = data;
-    const needAttention = moderation.ordersPending + moderation.reviewsPending + moderation.questionsUnanswered;
+    const { sales, orders, shipping, promotions, tax, products, customers, behavior, todo } = data;
 
     return (
-        <div className="space-y-6">
-            <div>
+        <div>
+            <div className="mb-4">
                 <h1 className="text-xl font-bold text-gray-900">Tổng quan</h1>
-                <p className="mt-1 text-sm text-gray-500">Số liệu kinh doanh & việc cần xử lý.</p>
+                <p className="text-sm text-gray-500">{fmtDay(data.range.from, true)} – {fmtDay(data.range.to, true)} ({data.range.days} ngày). Doanh thu chỉ tính đơn đã chốt: không huỷ, đơn VNPAY đã thanh toán.</p>
             </div>
+            <PeriodBar value={range} onChange={setRange} loading={isFetching} prev={{ from: data.range.prevFrom, to: data.range.prevTo }} />
+            {isError && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{getApiErrorMessage(error)} — đang hiện số liệu của kỳ trước đó.</p>}
 
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                <Kpi icon={DollarSign} label="Doanh thu tháng này" value={formatVnd(kpis.revenueMonth)} tone="green" />
-                <Kpi icon={DollarSign} label="Tổng doanh thu" value={formatVnd(kpis.revenueTotal)} tone="blue" />
-                <Kpi icon={ShoppingCart} label="Tổng đơn hàng" value={String(kpis.ordersTotal)} tone="blue" />
-                <Kpi icon={Users} label="Khách hàng" value={String(kpis.customers)} tone="gray" />
-            </div>
-
-            {needAttention > 0 && (
-                <div className="grid gap-3 sm:grid-cols-3">
-                    <Link href="/admin/orders" className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4 transition hover:shadow-sm">
-                        <span className="flex items-center gap-2 text-sm text-amber-700"><Clock className="h-5 w-5" /> Đơn chờ xác nhận</span>
-                        <span className="text-lg font-bold text-amber-700">{moderation.ordersPending}</span>
-                    </Link>
-                    <Link href="/admin/reviews" className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4 transition hover:shadow-sm">
-                        <span className="flex items-center gap-2 text-sm text-amber-700"><Star className="h-5 w-5" /> Đánh giá chờ duyệt</span>
-                        <span className="text-lg font-bold text-amber-700">{moderation.reviewsPending}</span>
-                    </Link>
-                    <Link href="/admin/questions" className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4 transition hover:shadow-sm">
-                        <span className="flex items-center gap-2 text-sm text-amber-700"><MessageCircleQuestion className="h-5 w-5" /> Câu hỏi chưa trả lời</span>
-                        <span className="text-lg font-bold text-amber-700">{moderation.questionsUnanswered}</span>
-                    </Link>
+            {/* Việc cần xử lý: đặt trên cùng vì là thứ admin cần làm ngay */}
+            <Section title="Việc cần xử lý" icon={ClipboardList} href="/admin/orders" linkLabel="Đơn hàng" className="mb-5">
+                <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                    <TodoTile label={`Đơn chờ xác nhận > ${orders.staleHours.pending}h`} count={orders.stalePending} href="/admin/orders" tone="warn" />
+                    <TodoTile label={`Đã xác nhận chưa giao > ${orders.staleHours.confirmed}h`} count={orders.staleConfirmed} href="/admin/orders" tone="warn" />
+                    <TodoTile label="Đánh giá chờ duyệt" count={todo.reviewsPending} href="/admin/reviews" />
+                    <TodoTile label="Câu hỏi chưa trả lời" count={todo.questionsUnanswered} href="/admin/questions" />
+                    <TodoTile label="Yêu cầu hỗ trợ" count={todo.ticketsOpen} href="/admin/support" />
+                    <TodoTile label="Yêu cầu bảo hành" count={todo.warrantyOpen} href="/admin/support" tone="warn" />
                 </div>
-            )}
+            </Section>
 
-            <div className="grid gap-4 lg:grid-cols-3">
-                <div className="rounded-xl border border-gray-200 bg-white p-5 lg:col-span-2">
-                    <h2 className="mb-3 text-sm font-semibold text-gray-900">Doanh thu 14 ngày (đơn hoàn thành)</h2>
-                    <RevenueChart data={revenueTrend} />
-                </div>
-                <div className="rounded-xl border border-gray-200 bg-white p-5">
-                    <h2 className="mb-3 text-sm font-semibold text-gray-900">Đơn hàng theo trạng thái</h2>
-                    <ul className="space-y-2">
-                        {statusBreakdown.length === 0 && <li className="text-sm text-gray-400">Chưa có đơn.</li>}
-                        {statusBreakdown.map((s) => (
-                            <li key={s.status} className="flex items-center justify-between text-sm">
-                                <Badge color={ORDER_STATUS[s.status].color}>{ORDER_STATUS[s.status].label}</Badge>
-                                <span className="font-medium text-gray-800">{s.count}</span>
-                            </li>
-                        ))}
-                    </ul>
-                </div>
-            </div>
-
-            <div className="grid gap-4 lg:grid-cols-3">
-                <div className="rounded-xl border border-gray-200 bg-white p-5 lg:col-span-2">
-                    <div className="mb-3 flex items-center justify-between">
-                        <h2 className="text-sm font-semibold text-gray-900">Đơn hàng gần đây</h2>
-                        <Link href="/admin/orders" className="text-xs text-blue-600 hover:underline">Xem tất cả</Link>
+            <div className="grid gap-5 lg:grid-cols-3">
+                <Section title="Bán hàng" icon={ShoppingBag} href="/admin/orders" linkLabel="Xem đơn hàng" className="lg:col-span-3">
+                    <div className="grid gap-4 sm:grid-cols-3">
+                        <Stat big label="Doanh thu thuần" value={formatVnd(sales.netRevenue.cur)} delta={<Delta pair={sales.netRevenue} />}
+                            hint="Tiền hàng sau giảm giá, không gồm phí ship và VAT" />
+                        <Stat big label="Số đơn đã chốt" value={num(sales.orders.cur)} delta={<Delta pair={sales.orders} />} />
+                        <Stat big label="Giá trị trung bình / đơn" value={formatVnd(sales.aov.cur)} delta={<Delta pair={sales.aov} />}
+                            hint={`Khách đã trả ${formatVnd(sales.gross)} (gồm ship ${formatVnd(sales.shippingCollected)} và VAT)`} />
                     </div>
-                    <table className="w-full text-sm">
-                        <tbody className="divide-y divide-gray-50">
-                            {recentOrders.length === 0 && (
-                                <tr><td className="py-6 text-center text-gray-400">Chưa có đơn hàng.</td></tr>
-                            )}
-                            {recentOrders.map((o) => (
-                                <tr key={o.id} className="hover:bg-gray-50">
-                                    <td className="py-2">
-                                        <Link href={`/admin/orders/${o.id}`} className="font-medium text-gray-800 hover:text-blue-600">{o.code}</Link>
-                                        <span className="block text-xs text-gray-400">{o.recipientName}</span>
-                                    </td>
-                                    <td className="py-2"><Badge color={ORDER_STATUS[o.status].color}>{ORDER_STATUS[o.status].label}</Badge></td>
-                                    <td className="py-2 text-right font-medium text-gray-800">{formatVnd(o.total)}</td>
-                                    <td className="py-2 text-right text-xs text-gray-400">{new Date(o.createdAt).toLocaleDateString('vi-VN')}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                    <div className="mt-5">
+                        <p className="mb-1 text-xs font-medium text-gray-500">Doanh thu thuần theo ngày</p>
+                        <DailyChart data={sales.daily} />
+                    </div>
+                    <div className="mt-5 grid gap-6 md:grid-cols-2">
+                        <div>
+                            <p className="mb-2 text-xs font-medium text-gray-500">Theo danh mục <span className="font-normal text-gray-400">· tiền hàng trước mã giảm giá</span></p>
+                            <BarList rows={sales.byCategory.slice(0, 8).map((c) => ({ key: c.id, label: c.name, value: c.amount, display: formatVnd(c.amount) }))} />
+                        </div>
+                        <div>
+                            <p className="mb-2 text-xs font-medium text-gray-500">Theo phương thức thanh toán</p>
+                            <BarList rows={sales.byPayment.map((p) => ({
+                                key: p.method, label: p.method === 'COD' ? 'Thanh toán khi nhận (COD)' : 'VNPAY',
+                                value: p.net, display: `${formatVnd(p.net)} · ${num(p.orders)} đơn`,
+                            }))} />
+                        </div>
+                    </div>
+                </Section>
 
-                <div className="space-y-4">
-                    <div className="rounded-xl border border-gray-200 bg-white p-5">
-                        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900"><AlertTriangle className="h-4 w-4 text-red-500" /> Sắp hết hàng</h2>
-                        <ul className="space-y-2">
-                            {lowStock.length === 0 && <li className="text-sm text-gray-400">Không có sản phẩm nào sắp hết.</li>}
-                            {lowStock.map((p) => (
-                                <li key={p.id}>
-                                    <Link href={`/admin/products/${p.id}`} className="flex items-center gap-2 text-sm hover:text-blue-600">
-                                        <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded border border-gray-100 bg-gray-50">
-                                            {p.image ? <Image src={p.image} alt="" width={32} height={32} className="h-full w-full object-contain" /> : <ImageIcon className="h-4 w-4 text-gray-300" />}
-                                        </span>
-                                        <span className="line-clamp-1 flex-1 text-gray-700">{p.name}</span>
-                                        <span className="shrink-0 font-medium text-red-600">{p.stockQuantity}</span>
-                                    </Link>
+                <Section title="Đơn hàng" icon={ShoppingCart} href="/admin/orders">
+                    <div className="grid grid-cols-2 gap-4">
+                        <Stat label="Đơn tạo trong kỳ" value={num(orders.total)} />
+                        <Stat label="Tỉ lệ huỷ" value={pct(orders.cancelRate.cur)} delta={<Delta pair={orders.cancelRate} rate lowerIsBetter />} />
+                    </div>
+                    <div className="mt-4">
+                        <BarList rows={(['PENDING', 'CONFIRMED', 'SHIPPING', 'COMPLETED', 'CANCELLED'] as const).map((s) => {
+                            const c = orders.statusBreakdown.find((x) => x.status === s)?.count ?? 0;
+                            return { key: s, label: ORDER_STATUS[s].label, value: c, display: `${num(c)} · ${pct(orders.total ? (c / orders.total) * 100 : 0)}` };
+                        })} empty="Chưa có đơn trong kỳ" />
+                    </div>
+                    <div className="mt-4 space-y-1 border-t border-gray-100 pt-3 text-sm">
+                        <p className="flex justify-between"><span className="text-gray-600">VNPAY chưa thanh toán <span className="text-xs text-gray-400">(hiện tại)</span></span><span className="font-semibold tabular-nums">{num(orders.vnpayUnpaid)}</span></p>
+                        <p className="flex justify-between"><span className="text-gray-600">Giao dịch cần hoàn tiền <span className="text-xs text-gray-400">(hiện tại)</span></span><span className={`font-semibold tabular-nums ${orders.needsRefund ? 'text-red-600' : ''}`}>{num(orders.needsRefund)}</span></p>
+                    </div>
+                </Section>
+
+                <Section title="Vận chuyển GHN" icon={Truck} href="/admin/orders" linkLabel="Xem đơn đang giao">
+                    <div className="grid grid-cols-2 gap-4">
+                        <Stat label="Đang giao" value={num(shipping.inTransit)} hint="Hiện tại" />
+                        <Stat label="Gặp sự cố / hoàn" value={num(shipping.problems.count)} hint="Hiện tại" />
+                    </div>
+                    {shipping.problems.items.length > 0 && (
+                        <ul className="mt-3 space-y-1 text-xs">
+                            {shipping.problems.items.map((o) => (
+                                <li key={o.id} className="flex justify-between gap-2">
+                                    <Link href={`/admin/orders/${o.id}`} className="font-mono text-blue-600 hover:underline">{o.code}</Link>
+                                    <span className="text-red-600">{ghnStatus(o.shippingStatus).label}</span>
                                 </li>
                             ))}
                         </ul>
+                    )}
+                    <div className="mt-4 space-y-1 border-t border-gray-100 pt-3 text-sm">
+                        <p className="text-xs text-gray-400">{num(shipping.shipments)} vận đơn của đơn đã chốt trong kỳ</p>
+                        <p className="flex justify-between"><span className="text-gray-600">Phí GHN thực tế</span><span className="tabular-nums">{formatVnd(shipping.carrierFee)}</span></p>
+                        <p className="flex justify-between"><span className="text-gray-600">Phí ship thu của khách</span><span className="tabular-nums">{formatVnd(shipping.charged)}</span></p>
+                        <p className="flex justify-between font-semibold"><span className="text-gray-700">Shop bù ship</span><span className="tabular-nums">{formatVnd(shipping.subsidy)}</span></p>
                     </div>
+                </Section>
 
-                    <div className="rounded-xl border border-gray-200 bg-white p-5">
-                        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900"><Package className="h-4 w-4 text-blue-500" /> Bán chạy</h2>
-                        <ul className="space-y-2">
-                            {topProducts.length === 0 && <li className="text-sm text-gray-400">Chưa có dữ liệu bán hàng.</li>}
-                            {topProducts.map((p) => (
-                                <li key={p.id}>
-                                    <Link href={`/admin/products/${p.id}`} className="flex items-center gap-2 text-sm hover:text-blue-600">
-                                        <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded border border-gray-100 bg-gray-50">
-                                            {p.image ? <Image src={p.image} alt="" width={32} height={32} className="h-full w-full object-contain" /> : <ImageIcon className="h-4 w-4 text-gray-300" />}
-                                        </span>
-                                        <span className="line-clamp-1 flex-1 text-gray-700">{p.name}</span>
-                                        <span className="shrink-0 text-xs text-gray-500">đã bán {p.soldCount}</span>
-                                    </Link>
+                <Section title="Khuyến mại & voucher" icon={BadgePercent} href="/admin/promotions" linkLabel="Khuyến mại">
+                    <Stat label="Tổng tiền đã giảm" value={formatVnd(promotions.discount.cur)} delta={<Delta pair={promotions.discount} />} />
+                    <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600">
+                        <span>Giảm giá riêng SP</span><span className="text-right tabular-nums">{formatVnd(promotions.breakdown.sale)}</span>
+                        <span>Chương trình KM</span><span className="text-right tabular-nums">{formatVnd(promotions.breakdown.promotion)}</span>
+                        <span>Mã giảm tiền hàng</span><span className="text-right tabular-nums">{formatVnd(promotions.breakdown.productVoucher)}</span>
+                        <span>Mã giảm phí ship</span><span className="text-right tabular-nums">{formatVnd(promotions.breakdown.shippingVoucher)}</span>
+                    </div>
+                    <div className="mt-4 border-t border-gray-100 pt-3">
+                        <p className="mb-1 text-xs font-medium text-gray-500">Đang chạy ({promotions.active.count})</p>
+                        {promotions.active.items.length ? (
+                            <ul className="space-y-0.5 text-xs text-gray-700">
+                                {promotions.active.items.map((p) => (
+                                    <li key={p.id} className="flex justify-between gap-2">
+                                        <span className="truncate">{p.name}{p.forcePriority && <span className="ml-1 text-amber-600">(bắt buộc)</span>}</span>
+                                        <span className="shrink-0 text-gray-400">{p.endAt ? `đến ${new Date(p.endAt).toLocaleDateString('vi-VN')}` : 'không hạn'}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : <p className="text-xs text-gray-400">Không có chương trình nào.</p>}
+                        <p className="mb-1 mt-3 text-xs font-medium text-gray-500">Voucher dùng nhiều nhất <Link href="/admin/coupons" className="font-normal text-blue-600 hover:underline">· xem mã</Link></p>
+                        {promotions.topVouchers.length ? (
+                            <ul className="space-y-0.5 text-xs text-gray-700">
+                                {promotions.topVouchers.map((v) => (
+                                    <li key={v.code} className="flex justify-between gap-2">
+                                        <span className="font-mono">{v.code}</span>
+                                        <span className="tabular-nums text-gray-500">{num(v.uses)} lượt · {formatVnd(v.amount)}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : <p className="text-xs text-gray-400">Chưa có đơn dùng mã trong kỳ.</p>}
+                    </div>
+                </Section>
+
+                <Section title="Thuế" icon={Percent} href="/admin/invoices" linkLabel="Yêu cầu hoá đơn">
+                    <div className="grid grid-cols-2 gap-4">
+                        <Stat label="VAT trong kỳ" value={formatVnd(tax.vat.cur)} delta={<Delta pair={tax.vat} />} hint="Theo thuế suất lưu trên từng đơn" />
+                        <Stat label="Hoá đơn chờ xuất" value={num(tax.invoicesPending)} />
+                    </div>
+                    <Link href="/admin/tax" className="mt-3 inline-block text-xs text-blue-600 hover:underline">Cài đặt thuế suất →</Link>
+                </Section>
+
+                <Section title="Sản phẩm & kho" icon={Boxes} href="/admin/products" className="lg:col-span-2">
+                    <div className="grid gap-6 md:grid-cols-3">
+                        <div>
+                            <p className="mb-2 text-xs font-medium text-gray-500">Top doanh thu trong kỳ</p>
+                            <BarList rows={products.topRevenue.map((p) => ({ key: p.id, label: p.name, value: p.revenue, display: `${formatVnd(p.revenue)} · ${num(p.qty)}` }))} />
+                        </div>
+                        <div>
+                            <p className="mb-2 text-xs font-medium text-gray-500">Sắp hết hàng (≤ {products.lowStock.threshold}, hiện tại) · {num(products.lowStock.count)} SP</p>
+                            {products.lowStock.items.length ? (
+                                <ul className="space-y-1 text-xs">
+                                    {products.lowStock.items.map((p) => (
+                                        <li key={p.id} className="flex justify-between gap-2">
+                                            <Link href={`/admin/products/${p.id}`} className="truncate text-gray-700 hover:text-blue-600">{p.name}</Link>
+                                            <span className={`shrink-0 font-semibold tabular-nums ${p.stockQuantity === 0 ? 'text-red-600' : 'text-amber-700'}`}>{p.stockQuantity === 0 ? 'Hết' : `còn ${p.stockQuantity}`}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            ) : <p className="text-xs text-gray-400">Không có SP sắp hết.</p>}
+                        </div>
+                        <div>
+                            <p className="mb-2 text-xs font-medium text-gray-500">Tồn lâu: {products.slowMovers.days} ngày không bán · {num(products.slowMovers.count)} SP</p>
+                            {products.slowMovers.items.length ? (
+                                <ul className="space-y-1 text-xs">
+                                    {products.slowMovers.items.map((p) => (
+                                        <li key={p.id} className="flex justify-between gap-2">
+                                            <Link href={`/admin/products/${p.id}`} className="truncate text-gray-700 hover:text-blue-600">{p.name}</Link>
+                                            <span className="shrink-0 tabular-nums text-gray-500">{num(p.stock)} cái · {formatVnd(p.value)}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            ) : <p className="text-xs text-gray-400">Không có SP tồn lâu.</p>}
+                        </div>
+                    </div>
+                </Section>
+
+                <Section title="Khách hàng" icon={Users} href="/admin/users">
+                    <div className="grid grid-cols-2 gap-4">
+                        <Stat label="Khách đăng ký mới" value={num(customers.newCustomers.cur)} delta={<Delta pair={customers.newCustomers} />} />
+                        <Stat label="Khách mua trong kỳ" value={num(customers.buyers)} hint={`${num(customers.returning)} quay lại · ${num(customers.firstTime)} mua lần đầu`} />
+                    </div>
+                    <p className="mb-1 mt-4 text-xs font-medium text-gray-500">Top khách hàng theo chi tiêu</p>
+                    {customers.top.length ? (
+                        <ul className="space-y-1 text-xs">
+                            {customers.top.map((c) => (
+                                <li key={c.id} className="flex justify-between gap-2">
+                                    <span className="min-w-0 truncate text-gray-700" title={c.email}>{c.name}</span>
+                                    <span className="shrink-0 tabular-nums text-gray-500">{formatVnd(c.spent)} · {num(c.orders)} đơn</span>
                                 </li>
                             ))}
                         </ul>
+                    ) : <p className="text-xs text-gray-400">Chưa có khách mua trong kỳ.</p>}
+                </Section>
+
+                <Section title="Hành vi khách" icon={MousePointerClick} href="/admin/statistics" linkLabel="Thống kê" className="lg:col-span-2">
+                    <div className="grid gap-6 md:grid-cols-2">
+                        <div>
+                            <p className="mb-2 text-xs font-medium text-gray-500">Phễu chuyển đổi: xem → giỏ → mua</p>
+                            <BarList rows={[
+                                { key: 'v', label: 'Lượt xem sản phẩm', value: behavior.views, display: num(behavior.views) },
+                                { key: 'c', label: 'Thêm vào giỏ', value: behavior.addToCart, display: num(behavior.addToCart) },
+                                { key: 'o', label: 'Đơn đã chốt', value: behavior.orders, display: num(behavior.orders) },
+                            ]} />
+                            <div className="mt-3 grid grid-cols-2 gap-4">
+                                <Stat label="Xem → giỏ" value={pct(behavior.viewToCart.cur)} delta={<Delta pair={behavior.viewToCart} rate />} />
+                                <Stat label="Giỏ → mua" value={pct(behavior.cartToOrder.cur)} delta={<Delta pair={behavior.cartToOrder} rate />} />
+                            </div>
+                        </div>
+                        <div>
+                            <p className="mb-2 text-xs font-medium text-gray-500">Từ khoá tìm nhiều nhất · {num(behavior.searches)} lượt tìm</p>
+                            <BarList rows={behavior.topSearches.map((k) => ({ key: k.keyword, label: k.keyword, value: k.count, display: num(k.count) }))} empty="Chưa có lượt tìm kiếm trong kỳ" />
+                        </div>
                     </div>
-                </div>
+                </Section>
             </div>
         </div>
     );
