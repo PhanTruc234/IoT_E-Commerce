@@ -86,6 +86,7 @@ export default function AdminCouponsPage() {
                                 <Row label="Giá trị" value={detail.type === 'FREE_SHIPPING' ? (detail.value > 0 ? formatVnd(detail.value) : 'Miễn toàn bộ phí ship') : detail.discountType === 'PERCENT' ? `${detail.value}%` : formatVnd(detail.value)} />
                                 <Row label="Giảm tối đa" value={detail.maxDiscount != null ? formatVnd(detail.maxDiscount) : '—'} />
                                 <Row label="Đơn tối thiểu" value={detail.minOrder > 0 ? formatVnd(detail.minOrder) : 'Không yêu cầu'} />
+                                {detail.type === 'PRODUCT_DISCOUNT' && <Row label="SP đang giảm giá" value={detail.excludeDiscounted ? 'Không áp dụng' : 'Vẫn áp dụng'} />}
                                 <Row label="Tổng lượt dùng" value={`${detail.usedCount}${detail.usageLimit != null ? ' / ' + detail.usageLimit : ' (không giới hạn)'}`} />
                                 <Row label="Lượt dùng / người" value={detail.perUserLimit} />
                                 <Row label="Bắt đầu" value={dt(detail.startAt) ?? 'Ngay khi tạo'} />

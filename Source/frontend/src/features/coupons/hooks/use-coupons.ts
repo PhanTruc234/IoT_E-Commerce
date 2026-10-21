@@ -2,6 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { couponsApi, type CouponInput } from '../api/coupons.api';
 import { useAuthStore } from '@/features/auth/store/auth.store';
+import type { CouponQuoteBody } from '../api/coupons.api';
 
 export function useMyCoupons() {
     const status = useAuthStore((s) => s.status);
@@ -14,7 +15,7 @@ export function useSaveCoupon() {
         onSuccess: () => qc.invalidateQueries({ queryKey: ['coupons', 'my'] }),
     });
 }
-export function useCouponQuote(body: { subtotal: number; shippingFee: number; productCode?: string; shippingCode?: string }, enabled: boolean) {
+export function useCouponQuote(body: CouponQuoteBody, enabled: boolean) {
     return useQuery({
         queryKey: ['coupons', 'quote', body],
         queryFn: () => couponsApi.quote(body),

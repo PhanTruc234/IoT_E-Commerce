@@ -16,6 +16,8 @@ import { OrderTimeline } from '@/features/orders/components/order-timeline';
 import { TicketFormModal } from '@/features/support/components/ticket-form-modal';
 import { TicketType } from '@/features/support/types';
 import { ShipmentTracking } from '@/features/orders/components/shipment-tracking';
+import { VatLine } from '@/features/tax/components/vat-line';
+import { InvoiceRequestCard } from '@/features/tax/components/invoice-request-card';
 
 // Khớp UNPAID_CANCEL_MIN ở backend (payments.service.ts)
 const AUTO_CANCEL_MIN = 30;
@@ -124,7 +126,11 @@ function OrderView() {
                                 <span className="min-w-0 flex-1">
                                     <span className="line-clamp-1 text-sm text-gray-800">{it.name}</span>
                                     {it.variantLabel && <span className="block text-xs text-indigo-600">{it.variantLabel}</span>}
-                                    <span className="text-xs text-gray-500">{it.quantity} × {formatVnd(it.unitPrice)}</span>
+                                    <span className="text-xs text-gray-500">
+                                        {it.quantity} × {formatVnd(it.unitPrice)}
+                                        {it.listPrice != null && it.listPrice > it.unitPrice && <span className="ml-1 text-gray-400 line-through">{formatVnd(it.listPrice)}</span>}
+                                        {it.promotionName && <span className="ml-1.5 text-red-500">· {it.promotionName}</span>}
+                                    </span>
                                 </span>
                                 <span className="shrink-0 text-sm font-medium text-gray-700">{formatVnd(it.lineTotal)}</span>
                             </div>
@@ -146,7 +152,9 @@ function OrderView() {
                 <div className="space-y-1.5 pt-4 text-sm">
                     <div className="flex justify-between text-gray-600"><span>Tạm tính</span><span>{formatVnd(order.subtotal)}</span></div>
                     <div className="flex justify-between text-gray-600"><span>Phí vận chuyển</span><span>{order.shippingFee === 0 ? 'Miễn phí' : formatVnd(order.shippingFee)}</span></div>
+                    {!order.pricesIncludeTax && <VatLine taxRate={order.taxRate} taxAmount={order.taxAmount} pricesIncludeTax={false} />}
                     <div className="flex justify-between pt-1 text-base font-bold text-gray-900"><span>Tổng cộng</span><span className="text-blue-600">{formatVnd(order.total)}</span></div>
+                    {order.pricesIncludeTax && <VatLine taxRate={order.taxRate} taxAmount={order.taxAmount} pricesIncludeTax />}
                 </div>
 
                 {order.status === 'PENDING' && order.paymentMethod === 'VNPAY' && order.paymentStatus !== 'PAID' && autoCancelAt && (
@@ -178,6 +186,7 @@ function OrderView() {
                     <ShipmentTracking order={order} />
                 </div>
             )}
+            <InvoiceRequestCard orderId={order.id} request={order.invoiceRequest} cancelled={isCancelled} />
             {order.orderStatusHistories && order.orderStatusHistories.length > 0 && (
                 <div className="mt-5 rounded-xl border border-gray-200 bg-white p-6">
                     <h2 className="mb-4 text-sm font-semibold text-gray-700">Lịch sử đơn hàng</h2>

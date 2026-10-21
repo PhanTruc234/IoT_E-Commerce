@@ -1,3 +1,5 @@
+import type { InvoiceRequest } from '@/features/tax/api/tax.api';
+
 export type OrderStatus = 'PENDING' | 'CONFIRMED' | 'SHIPPING' | 'COMPLETED' | 'CANCELLED';
 export type PaymentMethod = 'COD' | 'VNPAY';
 export type PaymentStatus = 'UNPAID' | 'PENDING' | 'PAID' | 'FAILED';
@@ -35,6 +37,10 @@ export interface OrderItem {
     unitPrice: number;
     quantity: number;
     lineTotal: number;
+    /** Giá gốc lúc đặt (đơn cũ: null) */
+    listPrice: number | null;
+    priceSource: 'NONE' | 'SALE' | 'PROMOTION' | null;
+    promotionName: string | null;
 }
 export interface ShipmentEvent {
     id: string;
@@ -70,6 +76,10 @@ export interface Order {
     orderStatusHistories?: OrderStatusHistory[];
     shipmentEvents?: ShipmentEvent[];
     payments?: OrderPayment[];
+    taxRate: number | null;
+    taxAmount: number;
+    pricesIncludeTax: boolean;
+    invoiceRequest?: InvoiceRequest | null;
 }
 export interface AdminOrderRow {
     id: string;

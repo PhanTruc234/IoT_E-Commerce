@@ -12,6 +12,7 @@ import { Input } from '@/shared/ui/input';
 import { SearchSelect } from '@/shared/ui/search-select';
 import { formatVnd } from '@/shared/lib/format';
 import { getApiErrorMessage } from '@/shared/lib/api-error';
+import { VatLine } from '@/features/tax/components/vat-line';
 import { isIdempotencyConflict, newIdempotencyKey } from '@/shared/lib/idempotency';
 import { useCart } from '@/features/cart/hooks/use-cart';
 import { useCreateOrder, useCreateDirectOrder } from '@/features/orders/hooks/use-orders';
@@ -48,7 +49,7 @@ const schema = z
     });
 type FormValues = z.infer<typeof schema>;
 
-interface LineItem { id: string; productId: string; name: string; image: string | null; variantLabel: string | null; quantity: number; unitPrice: number; lineTotal: number }
+interface LineItem { id: string; productId: string; variantId?: string | null; name: string; image: string | null; variantLabel: string | null; quantity: number; unitPrice: number; lineTotal: number }
 
 function CheckoutInner() {
     const router = useRouter();
@@ -115,7 +116,7 @@ function CheckoutInner() {
     }, [wardsQ.data, wardId, setValue]);
 
     const items: LineItem[] = isBuyNow
-        ? (buyNowItem ? [{ id: 'buynow', productId: buyNowItem.productId, name: buyNowItem.name, image: buyNowItem.image, variantLabel: buyNowItem.variantLabel, quantity: buyNowItem.quantity, unitPrice: buyNowItem.unitPrice, lineTotal: buyNowItem.unitPrice * buyNowItem.quantity }] : [])
+        ? (buyNowItem ? [{ id: 'buynow', productId: buyNowItem.productId, variantId: buyNowItem.variantId, name: buyNowItem.name, image: buyNowItem.image, variantLabel: buyNowItem.variantLabel, quantity: buyNowItem.quantity, unitPrice: buyNowItem.unitPrice, lineTotal: buyNowItem.unitPrice * buyNowItem.quantity }] : [])
         : (cart?.items ?? []);
     const itemCount = isBuyNow ? (buyNowItem?.quantity ?? 0) : (cart?.itemCount ?? 0);
     const subtotal = items.reduce((s, i) => s + i.lineTotal, 0);
@@ -135,12 +136,16 @@ function CheckoutInner() {
 
     const sourceReady = isBuyNow ? !!buyNowItem : !!(cart && cart.items.length > 0);
     const { data: quote } = useCouponQuote(
-        { subtotal, shippingFee: shippingFee ?? 0, productCode: productCode || undefined, shippingCode: shippingCode || undefined },
+        {
+            subtotal, shippingFee: shippingFee ?? 0, productCode: productCode || undefined, shippingCode: shippingCode || undefined,
+            items: items.map((i) => ({ productId: i.productId, variantId: i.variantId ?? undefined, quantity: i.quantity })),
+        },
         sourceReady,
     );
     const discountAmount = quote?.discountAmount ?? 0;
     const shippingDiscountAmt = quote?.shippingDiscount ?? 0;
-    const finalTotal = Math.max(0, subtotal + (shippingFee ?? 0) - discountAmount - shippingDiscountAmt);
+    // Tổng & VAT do backend tính (cùng công thức với lúc tạo đơn); trong lúc chờ thì hiện tạm tổng trước thuế
+    const finalTotal = quote?.total ?? Math.max(0, subtotal + (shippingFee ?? 0) - discountAmount - shippingDiscountAmt);
     const freeByThreshold = shipConfig ? subtotal >= shipConfig.freeShipFrom : false;
     const missingForFree = shipConfig && !freeByThreshold ? shipConfig.freeShipFrom - subtotal : 0;
     const carrierFee = quoteBody && !quoting ? quoteQ.data?.carrierFee ?? null : null;
@@ -411,10 +416,12 @@ function CheckoutInner() {
                             {shippingDiscountAmt > 0 && (
                                 <div className="flex justify-between text-green-600"><span>Giảm phí ship</span><span>-{formatVnd(shippingDiscountAmt)}</span></div>
                             )}
+                            {quote && !quote.pricesIncludeTax && <VatLine taxRate={quote.taxRate} taxAmount={quote.taxAmount} pricesIncludeTax={false} />}
                             <div className="flex justify-between pt-1 text-base font-bold text-gray-900">
                                 <span>Tổng cộng</span>
                                 <span className="text-blue-600">{formatVnd(finalTotal)}</span>
                             </div>
+                            {quote?.pricesIncludeTax && <VatLine taxRate={quote.taxRate} taxAmount={quote.taxAmount} pricesIncludeTax />}
                         </div>
                         <label className="mt-4 flex items-start gap-2 text-sm text-gray-600">
                             <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5 h-4 w-4 rounded" />

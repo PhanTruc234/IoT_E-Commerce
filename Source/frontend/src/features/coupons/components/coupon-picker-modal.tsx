@@ -31,6 +31,7 @@ function Group({ title, list, selected, onSelect }: { title: string; list: MyCou
                                     <span className="font-mono text-sm font-bold text-blue-600">{c.code}</span>
                                     <span className="block text-xs text-gray-700">{describe(c)}</span>
                                     {c.minOrder > 0 && <span className="block text-[11px] text-gray-400">Đơn tối thiểu {formatVnd(c.minOrder)}</span>}
+                                    {c.excludeDiscounted && <span className="block text-[11px] text-amber-600">Không áp cho SP đang giảm giá</span>}
                                 </span>
                                 <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${on ? 'border-blue-500 bg-blue-500 text-white' : 'border-gray-300'}`}>
                                     {on && <Check className="h-3.5 w-3.5" />}

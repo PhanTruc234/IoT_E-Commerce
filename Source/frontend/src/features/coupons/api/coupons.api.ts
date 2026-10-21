@@ -8,9 +8,14 @@ export interface MyCoupon {
     id: string; code: string; description: string | null; type: CouponType;
     discountType: DiscountType; value: number; maxDiscount: number | null;
     minOrder: number; endAt: string | null; status: CouponStatus;
+    /** Không áp cho SP đang được giảm giá */
+    excludeDiscounted: boolean;
 }
 export interface CouponQuote {
-    discountAmount: number; shippingDiscount: number; total: number;
+    discountAmount: number; shippingDiscount: number;
+    /** Tổng khách trả, đã tính VAT nếu giá chưa gồm VAT */
+    total: number;
+    taxRate: number | null; taxAmount: number; pricesIncludeTax: boolean;
     productCode: string | null; shippingCode: string | null;
     errors: { product?: string; shipping?: string };
 }
@@ -25,6 +30,12 @@ export interface CouponInput {
     value: number; maxDiscount?: number; minOrder?: number; usageLimit?: number;
     perUserLimit?: number; startAt?: string; endAt?: string; isActive?: boolean;
     isFlashSale?: boolean; claimStartAt?: string; claimEndAt?: string; claimLimit?: number;
+    excludeDiscounted?: boolean;
+}
+export interface CouponQuoteBody {
+    subtotal: number; shippingFee: number; productCode?: string; shippingCode?: string;
+    /** Để backend biết dòng nào đang được giảm (mã "không áp cho SP đang giảm") */
+    items?: { productId: string; variantId?: string; quantity: number }[];
 }
 
 export type FlashStatus = 'UPCOMING' | 'LIVE' | 'SOLD_OUT';
@@ -39,7 +50,7 @@ export interface FlashCoupon {
 export const couponsApi = {
     save: (code: string) => apiClient.post('/coupons/save', { code }).then((r) => r.data),
     my: () => apiClient.get<MyCoupon[]>('/coupons/my').then((r) => r.data),
-    quote: (body: { subtotal: number; shippingFee: number; productCode?: string; shippingCode?: string }) =>
+    quote: (body: CouponQuoteBody) =>
         apiClient.post<CouponQuote>('/coupons/quote', body).then((r) => r.data),
     flash: () => apiClient.get<FlashCoupon[]>('/coupons/flash').then((r) => r.data),
     claim: (couponId: string) => apiClient.post('/coupons/claim', { couponId }).then((r) => r.data),

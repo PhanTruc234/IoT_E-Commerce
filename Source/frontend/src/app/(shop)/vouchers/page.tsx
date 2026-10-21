@@ -62,6 +62,7 @@ export default function VouchersPage() {
                                             </div>
                                             <p className="mt-1 text-sm font-medium text-gray-800">{describe(c)}</p>
                                             {c.minOrder > 0 && <p className="text-xs text-gray-400">Đơn tối thiểu {formatVnd(c.minOrder)}</p>}
+                                            {c.excludeDiscounted && <p className="text-xs text-amber-600">Không áp cho SP đang giảm giá</p>}
                                         </div>
                                         <div className="shrink-0 text-right">
                                             {c.status === 'USED' ? <span className="text-xs text-gray-400">Đã dùng</span>

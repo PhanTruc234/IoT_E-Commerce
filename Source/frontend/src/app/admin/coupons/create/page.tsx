@@ -94,6 +94,16 @@ export default function CreateCouponPage() {
                     </label>
                 </div>
 
+                {form.type === 'PRODUCT_DISCOUNT' && (
+                    <label className="mt-4 flex cursor-pointer items-start gap-2 text-sm text-gray-800">
+                        <input type="checkbox" className="mt-0.5 h-4 w-4" checked={!!form.excludeDiscounted} onChange={(e) => set('excludeDiscounted', e.target.checked)} />
+                        <span>
+                            <span className="font-medium">Không áp cho sản phẩm đang giảm giá</span>
+                            <span className="block text-xs text-gray-500">Chỉ giảm trên các SP đang bán giá gốc; đơn tối thiểu cũng chỉ tính phần tiền của các SP này.</span>
+                        </span>
+                    </label>
+                )}
+
                 <div className="mt-4 rounded-lg border border-red-100 bg-red-50/40 p-3">
                     <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-800">
                         <input type="checkbox" checked={!!form.isFlashSale} onChange={(e) => set('isFlashSale', e.target.checked)} className="h-4 w-4" />

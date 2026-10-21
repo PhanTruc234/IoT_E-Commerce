@@ -16,6 +16,8 @@ import type { OrderStatus } from '@/features/orders/types';
 import { OrderTimeline } from '@/features/orders/components/order-timeline';
 import { ShipmentTracking } from '@/features/orders/components/shipment-tracking';
 import { ShipmentAdminPanel } from '@/features/orders/components/shipment-admin-panel';
+import { VatLine } from '@/features/tax/components/vat-line';
+import { INVOICE_STATUS } from '@/features/tax/api/tax.api';
 
 export default function AdminOrderDetailPage() {
     const { id } = useParams<{ id: string }>();
@@ -70,7 +72,12 @@ export default function AdminOrderDetailPage() {
                                     <span className="min-w-0 flex-1">
                                         <span className="line-clamp-1 text-sm text-gray-800">{it.name}</span>
                                         {it.variantLabel && <span className="block text-xs text-indigo-600">{it.variantLabel}</span>}
-                                        <span className="text-xs text-gray-500">{it.quantity} × {formatVnd(it.unitPrice)}</span>
+                                        <span className="text-xs text-gray-500">
+                                            {it.quantity} × {formatVnd(it.unitPrice)}
+                                            {it.listPrice != null && it.listPrice > it.unitPrice && <span className="ml-1 text-gray-400 line-through">{formatVnd(it.listPrice)}</span>}
+                                            {it.priceSource === 'SALE' && <span className="ml-1.5 text-red-500">· giảm giá riêng</span>}
+                                            {it.promotionName && <span className="ml-1.5 text-red-500">· KM: {it.promotionName}</span>}
+                                        </span>
                                     </span>
                                     <span className="shrink-0 text-sm font-medium text-gray-700">{formatVnd(it.lineTotal)}</span>
                                 </li>
@@ -79,7 +86,9 @@ export default function AdminOrderDetailPage() {
                         <div className="space-y-1.5 border-t border-gray-100 px-5 py-4 text-sm">
                             <div className="flex justify-between text-gray-600"><span>Tạm tính</span><span>{formatVnd(order.subtotal)}</span></div>
                             <div className="flex justify-between text-gray-600"><span>Phí vận chuyển</span><span>{order.shippingFee === 0 ? 'Miễn phí' : formatVnd(order.shippingFee)}</span></div>
+                            {!order.pricesIncludeTax && <VatLine taxRate={order.taxRate} taxAmount={order.taxAmount} pricesIncludeTax={false} />}
                             <div className="flex justify-between pt-1 text-base font-bold text-gray-900"><span>Tổng cộng</span><span className="text-blue-600">{formatVnd(order.total)}</span></div>
+                            {order.pricesIncludeTax && <VatLine taxRate={order.taxRate} taxAmount={order.taxAmount} pricesIncludeTax />}
                         </div>
                     </div>
                     {order.payments.length > 0 && (
@@ -111,6 +120,18 @@ export default function AdminOrderDetailPage() {
                 <ShipmentTracking order={order} />
                 <div className="space-y-5">
                     <ShipmentAdminPanel order={order} />
+                    {order.invoiceRequest && (
+                        <div className="rounded-xl border border-gray-200 bg-white p-5 text-sm">
+                            <div className="mb-2 flex items-center justify-between">
+                                <p className="text-xs font-semibold uppercase text-gray-400">Yêu cầu hoá đơn VAT</p>
+                                <Badge color={INVOICE_STATUS[order.invoiceRequest.status].color}>{INVOICE_STATUS[order.invoiceRequest.status].label}</Badge>
+                            </div>
+                            <p className="text-gray-800">{order.invoiceRequest.buyerName}{order.invoiceRequest.taxCode && ` · MST ${order.invoiceRequest.taxCode}`}</p>
+                            <p className="text-gray-500">{order.invoiceRequest.email}</p>
+                            {order.invoiceRequest.invoiceNumber && <p className="text-gray-600">Số hoá đơn: {order.invoiceRequest.invoiceNumber}</p>}
+                            <Link href="/admin/invoices" className="mt-1 inline-block text-xs text-blue-600 hover:underline">Xử lý ở trang Hoá đơn →</Link>
+                        </div>
+                    )}
                     <div className="rounded-xl border border-gray-200 bg-white p-5 text-sm">
                         <p className="mb-2 text-xs font-semibold uppercase text-gray-400">Người nhận</p>
                         <p className="font-medium text-gray-800">{order.recipientName}</p>
