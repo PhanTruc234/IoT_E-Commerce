@@ -167,6 +167,7 @@ model User {
   userCoupons       UserCoupon[]
   notifications     Notification[]
   notificationReads NotificationRead[]
+  invoiceRequests   InvoiceRequest[]
 
   @@map("users")
 }
@@ -238,25 +239,29 @@ model Product {
   type          ProductType   @default(SIMPLE)
   viewCount     Int           @default(0)
   soldCount     Int           @default(0)
+  // Tổng hợp từ đánh giá đã duyệt — cập nhật mỗi khi admin duyệt / ẩn / xoá đánh giá
+  ratingAvg     Float         @default(0)
+  ratingCount   Int           @default(0)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
   category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   brand    Brand?   @relation(fields: [brandId], references: [id], onDelete: SetNull)
 
-  images            ProductImage[]
-  specifications    ProductSpecification[]
-  attributes        ProductAttribute[]
-  variants          ProductVariant[]
-  comboItems        ComboItem[]            @relation("ComboParent")
-  usedInCombos      ComboItem[]            @relation("ComboComponent")
-  cartItems         CartItem[]
-  orderItems        OrderItem[]
-  serials           Serial[]
-  questions         Question[]
-  reviews           Review[]
-  wishlists         Wishlist[]
-  promotionProducts PromotionProduct[]
+  images              ProductImage[]
+  specifications      ProductSpecification[]
+  attributes          ProductAttribute[]
+  variants            ProductVariant[]
+  comboItems          ComboItem[]                @relation("ComboParent")
+  usedInCombos        ComboItem[]                @relation("ComboComponent")
+  cartItems           CartItem[]
+  orderItems          OrderItem[]
+  serials             Serial[]
+  questions           Question[]
+  reviews             Review[]
+  wishlists           Wishlist[]
+  promotionProducts   PromotionProduct[]
+  promotionExclusions PromotionExcludedProduct[]
 
   @@index([categoryId])
   @@index([brandId])
@@ -440,6 +445,10 @@ model Order {
   paidAt             DateTime?
   trackingCode       String?       @unique
   shippingStatus     String?
+  // VAT chụp tại thời điểm đặt — đổi thuế suất sau này không làm đổi đơn cũ (taxRate null = không tính VAT)
+  taxRate            Float?
+  taxAmount          Int           @default(0)
+  pricesIncludeTax   Boolean       @default(true)
   carrierFee         Int?
   expectedDeliveryAt DateTime?
   createdAt          DateTime      @default(now())
@@ -453,6 +462,7 @@ model Order {
   reviews              Review[]
   shipmentEvents       ShipmentEvent[]
   payments             PaymentTransaction[]
+  invoiceRequest       InvoiceRequest?
 
   @@index([userId])
   @@map("orders")
@@ -503,16 +513,21 @@ model IdempotencyRecord {
 }
 
 model OrderItem {
-  id           String  @id @default(uuid())
-  orderId      String
-  productId    String
-  variantId    String?
-  name         String
-  variantLabel String?
-  image        String?
-  unitPrice    Int
-  quantity     Int
-  lineTotal    Int
+  id            String  @id @default(uuid())
+  orderId       String
+  productId     String
+  variantId     String?
+  name          String
+  variantLabel  String?
+  image         String?
+  unitPrice     Int
+  quantity      Int
+  lineTotal     Int
+  // Ảnh chụp giá lúc đặt: giá gốc và ưu đãi đã áp (đơn cũ trước khi có các cột này để trống)
+  listPrice     Int?
+  priceSource   String?
+  promotionId   String?
+  promotionName String?
 
   order   Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
@@ -764,12 +779,14 @@ model Coupon {
   isActive     Boolean      @default(true)
 
   // Flash sale (săn mã theo khung giờ)
-  isFlashSale  Boolean   @default(false)
-  claimStartAt DateTime?
-  claimEndAt   DateTime?
-  claimLimit   Int?
-  claimedCount Int       @default(0)
-  announcedAt  DateTime?
+  isFlashSale       Boolean   @default(false)
+  // true = không giảm cho sản phẩm đang được giảm riêng / khuyến mại
+  excludeDiscounted Boolean   @default(false)
+  claimStartAt      DateTime?
+  claimEndAt        DateTime?
+  claimLimit        Int?
+  claimedCount      Int       @default(0)
+  announcedAt       DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -797,24 +814,27 @@ model UserCoupon {
 }
 
 model Promotion {
-  id           String         @id @default(uuid())
-  name         String
-  description  String?
-  bannerImage  String?
-  linkUrl      String?
-  discountType DiscountType   @default(PERCENT)
-  value        Int            @default(0)
-  maxDiscount  Int?
-  scope        PromotionScope @default(ALL)
-  priority     Int            @default(0)
-  startAt      DateTime?
-  endAt        DateTime?
-  isActive     Boolean        @default(true)
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  id            String         @id @default(uuid())
+  name          String
+  description   String?
+  bannerImage   String?
+  linkUrl       String?
+  discountType  DiscountType   @default(PERCENT)
+  value         Int            @default(0)
+  maxDiscount   Int?
+  scope         PromotionScope @default(ALL)
+  priority      Int            @default(0)
+  // Ưu tiên bắt buộc: luôn áp chương trình này dù giá không thấp nhất (nhiều chương trình bật → priority cao nhất thắng)
+  forcePriority Boolean        @default(false)
+  startAt       DateTime?
+  endAt         DateTime?
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
-  products   PromotionProduct[]
-  categories PromotionCategory[]
+  products         PromotionProduct[]
+  categories       PromotionCategory[]
+  excludedProducts PromotionExcludedProduct[]
 
   @@map("promotions")
 }
@@ -837,6 +857,18 @@ model PromotionCategory {
 
   @@id([promotionId, categoryId])
   @@map("promotion_categories")
+}
+
+// Sản phẩm loại trừ khỏi 1 chiến dịch (VD chiến dịch "toàn shop" nhưng bỏ hàng mới về)
+model PromotionExcludedProduct {
+  promotionId String
+  productId   String
+  promotion   Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([promotionId, productId])
+  @@index([productId])
+  @@map("promotion_excluded_products")
 }
 
 model Notification {
@@ -869,4 +901,52 @@ model NotificationRead {
   @@unique([userId, notificationId])
   @@index([userId])
   @@map("notification_reads")
+}
+
+// Cài đặt thuế VAT (1 dòng). Thuế suất sửa trong trang admin, không ghi cứng trong code.
+model TaxSetting {
+  id               String   @id @default(uuid())
+  enabled          Boolean  @default(true)
+  rate             Float    @default(8)
+  // true: giá niêm yết đã gồm VAT (tách VAT ra từ tổng); false: cộng thêm VAT vào tổng
+  pricesIncludeTax Boolean  @default(true)
+  updatedAt        DateTime @updatedAt
+
+  @@map("tax_settings")
+}
+
+enum InvoiceBuyerType {
+  PERSONAL
+  COMPANY
+}
+
+enum InvoiceStatus {
+  PENDING
+  ISSUED
+  REJECTED
+}
+
+model InvoiceRequest {
+  id            String           @id @default(uuid())
+  orderId       String           @unique
+  userId        String
+  buyerType     InvoiceBuyerType @default(PERSONAL)
+  buyerName     String
+  taxCode       String?
+  address       String
+  email         String
+  note          String?
+  status        InvoiceStatus    @default(PENDING)
+  invoiceNumber String?
+  adminNote     String?
+  processedAt   DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([userId])
+  @@map("invoice_requests")
 }
