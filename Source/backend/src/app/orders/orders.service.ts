@@ -604,6 +604,59 @@ export class OrdersService {
         throw new ConflictException(`Đơn vừa được chuyển sang "${label}" bởi thao tác khác, vui lòng tải lại trang`);
     }
 
+    /**
+     * Phần ghi DB của 1 lần chuyển trạng thái (đã kiểm tra hợp lệ, đã gọi GHN xong) — chạy trong transaction của bên gọi
+     * để webhook GHN gộp được với việc lưu sự kiện. false = request khác đã chuyển đơn sang `status` trước.
+     */
+    private async commitTransition(
+        tx: Prisma.TransactionClient,
+        cur: Prisma.OrderGetPayload<{ include: { items: true } }>,
+        status: OrderStatus,
+        actor: string,
+        note: string | undefined,
+        shipment: Prisma.OrderUpdateInput = {},
+    ): Promise<boolean> {
+        const id = cur.id;
+        if (status === 'CANCELLED') {
+            const paidOnline = cur.paymentMethod === 'VNPAY' && cur.paymentStatus === 'PAID';
+            // Chỉ request đổi được trạng thái mới hoàn kho → huỷ trùng (admin + khách + cron + GHN) không cộng kho 2 lần
+            const won = await this.transition(tx, id, cur.status, 'CANCELLED', {
+                ...(shipment as Prisma.OrderUpdateManyMutationInput),
+                ...(cur.paymentStatus === 'PENDING' ? { paymentStatus: 'FAILED' } : {}),
+            });
+            if (!won) return false;
+            await this.restock(tx, cur.items);
+            if (paidOnline) {
+                const paid = await tx.paymentTransaction.findFirst({ where: { orderId: id, status: 'SUCCESS' }, orderBy: { paidAt: 'desc' } });
+                if (paid) await tx.paymentTransaction.update({ where: { id: paid.id }, data: { needsRefund: true } });
+            }
+            await tx.orderStatusHistory.create({
+                data: {
+                    orderId: id,
+                    status: 'CANCELLED',
+                    changedBy: actor,
+                    note: (note ?? 'Huỷ đơn & hoàn kho') + (paidOnline && !note?.includes('hoàn tiền') ? ' · cần hoàn tiền VNPAY cho khách' : ''),
+                },
+            });
+            return true;
+        }
+
+        const data: Prisma.OrderUpdateManyMutationInput = { ...(shipment as Prisma.OrderUpdateManyMutationInput) };
+        if (status === 'COMPLETED' && cur.paymentMethod === 'COD' && cur.paymentStatus !== 'PAID') {
+            data.paymentStatus = 'PAID';
+            data.paidAt = new Date();
+        }
+        // Admin bấm + webhook GHN cùng lúc: chỉ 1 request gán serial / ghi lịch sử
+        if (!(await this.transition(tx, id, cur.status, status, data))) return false;
+        if (status === 'COMPLETED') {
+            await this.assignSerials(tx, cur);
+        }
+        await tx.orderStatusHistory.create({
+            data: { orderId: id, status, changedBy: actor, note },
+        });
+        return true;
+    }
+
     async updateStatus(id: string, status: OrderStatus, actor?: string, opts: { note?: string; carrier?: boolean } = {}) {
         const FORWARD: Record<OrderStatus, OrderStatus[]> = {
             PENDING: ['CONFIRMED', 'CANCELLED'],
@@ -658,50 +711,9 @@ export class OrdersService {
             }
         }
 
-        if (status === 'CANCELLED') {
-            const cur = order;
-            const paidOnline = cur.paymentMethod === 'VNPAY' && cur.paymentStatus === 'PAID';
-            await this.prisma.$transaction(async (tx) => {
-                // Chỉ request đổi được trạng thái mới hoàn kho → huỷ trùng (admin + khách + cron + GHN) không cộng kho 2 lần
-                const won = await this.transition(tx, id, cur.status, 'CANCELLED', {
-                    ...(shipment as Prisma.OrderUpdateManyMutationInput),
-                    ...(cur.paymentStatus === 'PENDING' ? { paymentStatus: 'FAILED' } : {}),
-                });
-                if (!won) return;
-                await this.restock(tx, cur.items);
-                if (paidOnline) {
-                    const paid = await tx.paymentTransaction.findFirst({ where: { orderId: id, status: 'SUCCESS' }, orderBy: { paidAt: 'desc' } });
-                    if (paid) await tx.paymentTransaction.update({ where: { id: paid.id }, data: { needsRefund: true } });
-                }
-                await tx.orderStatusHistory.create({
-                    data: {
-                        orderId: id,
-                        status: 'CANCELLED',
-                        changedBy: actor ?? 'Quản trị viên',
-                        note: (note ?? 'Huỷ đơn & hoàn kho') + (paidOnline && !note?.includes('hoàn tiền') ? ' · cần hoàn tiền VNPAY cho khách' : ''),
-                    },
-                });
-            });
-            return this.findOneAdmin(id);
-        }
-
         const cur = order;
         try {
-            await this.prisma.$transaction(async (tx) => {
-                const data: Prisma.OrderUpdateManyMutationInput = { ...(shipment as Prisma.OrderUpdateManyMutationInput) };
-                if (status === 'COMPLETED' && cur.paymentMethod === 'COD' && cur.paymentStatus !== 'PAID') {
-                    data.paymentStatus = 'PAID';
-                    data.paidAt = new Date();
-                }
-                // Admin bấm + webhook GHN cùng lúc: chỉ 1 request gán serial / ghi lịch sử
-                if (!(await this.transition(tx, id, cur.status, status, data))) return;
-                if (status === 'COMPLETED') {
-                    await this.assignSerials(tx, cur);
-                }
-                await tx.orderStatusHistory.create({
-                    data: { orderId: id, status, changedBy: actor ?? 'Quản trị viên', note },
-                });
-            });
+            await this.prisma.$transaction((tx) => this.commitTransition(tx, cur, status, actor ?? 'Quản trị viên', note, shipment));
         } catch (e) {
             // Vừa tạo vận đơn GHN mà đơn đã bị huỷ/đổi bởi thao tác khác → huỷ vận đơn vừa tạo để không bị mồ côi
             if (e instanceof ConflictException && shipment.trackingCode) {
@@ -741,40 +753,53 @@ export class OrdersService {
         return this.findOneAdmin(id);
     }
     async applyCarrierEvent(e: CarrierEvent, verify: boolean) {
-        const order = await this.shipments.findByCarrierCode(e);
-        if (!order) return { handled: false };
-        const backward = isBackward(order.shippingStatus, e.status);
-        if (backward && e.type === 'switch_status') return { handled: true, ignored: 'backward' };
-        const target = e.type === 'switch_status' ? carrierTarget(e.status, order.status) : null;
-        if (verify && (target === 'COMPLETED' || target === 'CANCELLED')) {
+        const found = await this.shipments.findByCarrierCode(e);
+        if (!found) return { handled: false };
+        // Trạng thái cuối (giao xong / hoàn về) phải khớp GHN trước khi đổi đơn — gọi HTTP ở ngoài transaction
+        const final = e.type === 'switch_status' && (e.status === 'delivered' || e.status === 'returned');
+        if (verify && final && carrierTarget(e.status, found.status)) {
             const live = await this.shipments.liveStatus(e.orderCode);
             if (live.status !== e.status) return { handled: false };
         }
-        if (!(await this.shipments.record(order.id, e, !backward))) return { handled: true, duplicate: true };
-        const label = GHN_STATUS_LABEL[e.status] ?? e.status;
-        if (target === 'COMPLETED' && order.status === 'CONFIRMED') {
-            await this.updateStatus(order.id, 'SHIPPING', 'GHN', { carrier: true, note: 'GHN: Đã lấy hàng' });
-        }
-        if (target) {
-            const refund = target === 'CANCELLED' && order.paymentStatus === 'PAID' ? ' · cần hoàn tiền cho khách' : '';
-            const note = target === 'CANCELLED' ? `GHN: ${label} · hoàn kho${refund}` : `GHN: ${label}`;
-            await this.updateStatus(order.id, target, 'GHN', { carrier: true, note });
-        }
 
-        const tpl = e.type === 'switch_status' ? CARRIER_NOTIFY[e.status] : undefined;
-        if (tpl) {
-            await this.prisma.notification.create({
-                data: {
-                    title: tpl.title(order.code),
-                    body: tpl.body(e),
-                    type: 'ORDER',
-                    audience: 'USER',
-                    userId: order.userId,
-                    linkUrl: `/orders/${order.id}`,
-                },
-            });
-        }
-        return { handled: true };
+        // Lưu sự kiện + đổi trạng thái + thông báo trong CÙNG 1 transaction: lỗi giữa chừng thì rollback hết,
+        // GHN gửi lại sẽ xử lý lại từ đầu (trước đây sự kiện lưu trước nên lần gửi lại bị coi là trùng và bỏ qua).
+        return this.prisma.$transaction(async (tx) => {
+            // Khoá dòng đơn: các webhook của cùng 1 đơn xếp hàng, mỗi cái đọc trạng thái mới nhất
+            await tx.$queryRaw`SELECT id FROM orders WHERE id = ${found.id} FOR UPDATE`;
+            const order = await tx.order.findUniqueOrThrow({ where: { id: found.id }, include: { items: true } });
+            const backward = isBackward(order.shippingStatus, e.status);
+            if (backward && e.type === 'switch_status') return { handled: true, ignored: 'backward' };
+            if (!(await this.shipments.record(tx, order.id, e, !backward))) return { handled: true, duplicate: true };
+
+            const target = e.type === 'switch_status' ? carrierTarget(e.status, order.status) : null;
+            const label = GHN_STATUS_LABEL[e.status] ?? e.status;
+            let cur = order;
+            if (target === 'COMPLETED' && cur.status === 'CONFIRMED') {
+                await this.commitTransition(tx, cur, 'SHIPPING', 'GHN', 'GHN: Đã lấy hàng');
+                cur = { ...cur, status: 'SHIPPING' };
+            }
+            if (target) {
+                const refund = target === 'CANCELLED' && cur.paymentStatus === 'PAID' ? ' · cần hoàn tiền cho khách' : '';
+                const note = target === 'CANCELLED' ? `GHN: ${label} · hoàn kho${refund}` : `GHN: ${label}`;
+                await this.commitTransition(tx, cur, target, 'GHN', note);
+            }
+
+            const tpl = e.type === 'switch_status' ? CARRIER_NOTIFY[e.status] : undefined;
+            if (tpl) {
+                await tx.notification.create({
+                    data: {
+                        title: tpl.title(order.code),
+                        body: tpl.body(e),
+                        type: 'ORDER',
+                        audience: 'USER',
+                        userId: order.userId,
+                        linkUrl: `/orders/${order.id}`,
+                    },
+                });
+            }
+            return { handled: true };
+        });
     }
 
     async syncShipment(id: string) {

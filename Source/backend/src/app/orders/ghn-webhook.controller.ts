@@ -50,7 +50,7 @@ export class GhnWebhookController {
         if (!this.shipments.isOurShop(body?.ShopID) || !body.OrderCode || !body.Type || !body.Status) {
             return { ok: true, ignored: true };
         }
-        const time = body.Time ? new Date(body.Time) : new Date();
+        const time = body.Time ? new Date(body.Time) : null;
         try {
             const res = await this.orders.applyCarrierEvent({
                 orderCode: body.OrderCode,
@@ -59,7 +59,7 @@ export class GhnWebhookController {
                 status: body.Status,
                 reason: body.Reason || undefined,
                 warehouse: body.Warehouse || undefined,
-                time: Number.isNaN(time.getTime()) ? new Date() : time,
+                time: time && !Number.isNaN(time.getTime()) ? time : undefined,
             }, true);
             return { ok: true, ...res };
         } catch (e) {

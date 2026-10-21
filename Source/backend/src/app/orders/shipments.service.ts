@@ -10,7 +10,8 @@ export interface CarrierEvent {
     status: string;
     reason?: string;
     warehouse?: string;
-    time: Date;
+    /** Không có khi GHN không gửi Time */
+    time?: Date;
 }
 
 export const GHN_STATUS_LABEL: Record<string, string> = {
@@ -226,25 +227,27 @@ export class ShipmentsService {
         const byCode = await this.prisma.order.findUnique({ where: { code: e.clientOrderCode }, include: { items: true } });
         return byCode && (!byCode.trackingCode || byCode.trackingCode === e.orderCode) ? byCode : null;
     }
-    async record(orderId: string, e: CarrierEvent, updateStatus = true): Promise<boolean> {
-        try {
-            await this.prisma.$transaction([
-                this.prisma.shipmentEvent.create({
-                    data: {
-                        orderId,
-                        type: e.type,
-                        status: e.status,
-                        reason: e.reason || null,
-                        warehouse: e.warehouse || null,
-                        occurredAt: e.time,
-                    },
-                }),
-                this.prisma.order.update({ where: { id: orderId }, data: updateStatus ? { shippingStatus: e.status } : {} }),
-            ]);
-            return true;
-        } catch (err) {
-            if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') return false;
-            throw err;
+    /** Lưu sự kiện GHN trong transaction của bên gọi. false = sự kiện này đã được xử lý (GHN gửi lại). */
+    async record(tx: Prisma.TransactionClient, orderId: string, e: CarrierEvent, updateStatus = true): Promise<boolean> {
+        if (!e.time) {
+            // GHN không gửi Time → không lọc trùng theo thời điểm được, coi là trùng nếu đã có sự kiện cùng loại & trạng thái
+            const dup = await tx.shipmentEvent.findFirst({ where: { orderId, type: e.type, status: e.status }, select: { id: true } });
+            if (dup) return false;
         }
+        // ON CONFLICT DO NOTHING: trùng thì không ném lỗi (lỗi P2002 sẽ làm hỏng cả transaction đang mở)
+        const { count } = await tx.shipmentEvent.createMany({
+            data: [{
+                orderId,
+                type: e.type,
+                status: e.status,
+                reason: e.reason || null,
+                warehouse: e.warehouse || null,
+                occurredAt: e.time ?? new Date(),
+            }],
+            skipDuplicates: true,
+        });
+        if (!count) return false;
+        if (updateStatus) await tx.order.update({ where: { id: orderId }, data: { shippingStatus: e.status } });
+        return true;
     }
 }
