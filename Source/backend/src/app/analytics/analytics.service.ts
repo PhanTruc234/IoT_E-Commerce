@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateEventDto } from './dto/create-event.dto';
+import { addDays, vnDayKey, vnDayStart, vnToday } from '../../core/utils/vn-time.util';
 
 @Injectable()
 export class AnalyticsService {
@@ -13,9 +14,9 @@ export class AnalyticsService {
     }
 
     async getAnalytics(days = 14) {
-        const from = new Date();
-        from.setHours(0, 0, 0, 0);
-        from.setDate(from.getDate() - (days - 1));
+        // Mốc 00:00 giờ VN (server chạy UTC — dùng setHours sẽ lệch 7 tiếng)
+        const fromDay = addDays(vnToday(), -(days - 1));
+        const from = vnDayStart(fromDay);
 
         const [views, searches, addToCart, orders] = await Promise.all([
             this.prisma.userEvent.count({ where: { type: 'VIEW_PRODUCT', createdAt: { gte: from } } }),
@@ -83,12 +84,9 @@ export class AnalyticsService {
             this.prisma.userEvent.findMany({ where: { type: 'VIEW_PRODUCT', createdAt: { gte: from } }, select: { createdAt: true } }),
             this.prisma.order.findMany({ where: { createdAt: { gte: from } }, select: { createdAt: true } }),
         ]);
-        const key = (d: Date) => `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const key = (d: Date) => vnDayKey(d).slice(5);
         const map = new Map<string, { views: number; orders: number }>();
-        for (let i = 0; i < days; i++) {
-            const d = new Date(from); d.setDate(from.getDate() + i);
-            map.set(key(d), { views: 0, orders: 0 });
-        }
+        for (let i = 0; i < days; i++) map.set(addDays(fromDay, i).slice(5), { views: 0, orders: 0 });
         for (const e of viewEvents) { const t = map.get(key(new Date(e.createdAt))); if (t) t.views++; }
         for (const o of orderRows) { const t = map.get(key(new Date(o.createdAt))); if (t) t.orders++; }
         const trend = [...map.entries()].map(([date, v]) => ({ date, ...v }));

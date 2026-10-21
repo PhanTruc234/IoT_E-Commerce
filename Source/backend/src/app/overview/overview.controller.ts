@@ -1,8 +1,9 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { Roles } from '../../core/decorators/roles.decorator';
 import { OverviewService } from './overview.service';
+import { OverviewQueryDto } from './dto/overview-query.dto';
 
 @ApiTags('Admin Overview')
 @ApiBearerAuth()
@@ -12,8 +13,8 @@ export class OverviewController {
 
     @Roles(Role.ADMIN)
     @Get()
-    @ApiOperation({ summary: '[Admin] Số liệu tổng quan' })
-    get() {
-        return this.service.getOverview();
+    @ApiOperation({ summary: '[Admin] Tổng quan theo kỳ (giờ VN) kèm số liệu kỳ trước để so sánh' })
+    get(@Query() query: OverviewQueryDto) {
+        return this.service.getOverview(query);
     }
 }
