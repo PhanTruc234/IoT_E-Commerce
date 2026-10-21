@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AddCartItemDto } from './dto/add-cart-item.dto';
 
@@ -20,10 +21,31 @@ type CartLineOut = {
 export class CartService {
     constructor(private readonly prisma: PrismaService) { }
 
-    private async getOrCreate(userId: string) {
-        const existing = await this.prisma.cart.findUnique({ where: { userId }, select: { id: true } });
-        if (existing) return existing;
-        return this.prisma.cart.create({ data: { userId }, select: { id: true } });
+    // upsert theo userId (unique) → 2 request đầu tiên cùng lúc không tạo 2 giỏ / không lỗi 500
+    private getOrCreate(userId: string) {
+        return this.prisma.cart.upsert({ where: { userId }, create: { userId }, update: {}, select: { id: true } });
+    }
+
+    /**
+     * Cộng số lượng vào dòng giỏ, tạo dòng nếu chưa có. Bấm "Thêm vào giỏ" 2 lần cùng lúc: request tạo sau
+     * nhận P2002 (unique NULLS NOT DISTINCT) rồi cộng vào dòng vừa tạo, không sinh dòng trùng.
+     */
+    private async addQuantity(key: { cartId: string; productId: string; variantId: string | null }, qty: number, stock: number) {
+        let item = await this.prisma.cartItem.findFirst({ where: key, select: { id: true } });
+        if (!item) {
+            try {
+                await this.prisma.cartItem.create({ data: { ...key, quantity: Math.min(qty, stock) } });
+                return;
+            } catch (e) {
+                if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')) throw e;
+                item = await this.prisma.cartItem.findFirstOrThrow({ where: key, select: { id: true } });
+            }
+        }
+        // Cộng ngay trong câu UPDATE (không đọc-rồi-ghi) → 2 lần thêm cùng lúc không mất lượt nào; vượt tồn kho thì kéo về
+        const updated = await this.prisma.cartItem.update({ where: { id: item.id }, data: { quantity: { increment: qty } }, select: { quantity: true } });
+        if (updated.quantity > stock) {
+            await this.prisma.cartItem.updateMany({ where: { id: item.id, quantity: { gt: stock } }, data: { quantity: stock } });
+        }
     }
 
     private async comboAvailableStock(comboId: string): Promise<number> {
@@ -132,16 +154,7 @@ export class CartService {
         }
         if (stock <= 0) throw new BadRequestException('Sản phẩm đã hết hàng');
 
-        const existing = await this.prisma.cartItem.findFirst({
-            where: { cartId: cart.id, productId: product.id, variantId },
-        });
-        const quantity = Math.min((existing?.quantity ?? 0) + dto.quantity, stock);
-
-        if (existing) {
-            await this.prisma.cartItem.update({ where: { id: existing.id }, data: { quantity } });
-        } else {
-            await this.prisma.cartItem.create({ data: { cartId: cart.id, productId: product.id, variantId, quantity } });
-        }
+        await this.addQuantity({ cartId: cart.id, productId: product.id, variantId }, dto.quantity, stock);
         return this.getCart(userId);
     }
 
