@@ -27,6 +27,7 @@ import { CouponsModule } from './app/coupons/coupons.module';
 import { PromotionsModule } from './app/promotions/promotions.module';
 import { NotificationsModule } from './app/notifications/notifications.module';
 import { HealthModule } from './app/health/health.module';
+import { TaxModule } from './app/tax/tax.module';
 import { throttlerOptionsFactory } from './core/security/throttler.config';
 import { APP_GUARD } from '@nestjs/core';
 import { AppThrottlerGuard } from './core/security/app-throttler.guard';
@@ -63,7 +64,8 @@ import { AppThrottlerGuard } from './core/security/app-throttler.guard';
     CouponsModule,
     PromotionsModule,
     NotificationsModule,
-    HealthModule
+    HealthModule,
+    TaxModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AppThrottlerGuard }],
 })

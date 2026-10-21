@@ -1,8 +1,13 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Coupon, CouponType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PricingService } from '../promotions/pricing.service';
+import { TaxService } from '../tax/tax.service';
 import { CreateCouponDto } from './dto/create-coupon.dto';
 import { UpdateCouponDto } from './dto/update-coupon.dto';
+
+/** Dòng hàng đã tính giá — `discounted` = đang được giảm riêng / khuyến mại */
+export interface CouponLine { lineTotal: number; discounted: boolean }
 
 export interface CouponBreakdown {
     productCoupon: Coupon | null;
@@ -14,7 +19,11 @@ export interface CouponBreakdown {
 
 @Injectable()
 export class CouponsService {
-    constructor(private readonly prisma: PrismaService) { }
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly pricing: PricingService,
+        private readonly tax: TaxService,
+    ) { }
 
     private norm(code: string) { return code.trim().toUpperCase(); }
 
@@ -48,14 +57,21 @@ export class CouponsService {
         const d = c.value > 0 ? Math.min(c.value, shippingFee) : shippingFee;
         return Math.min(d, shippingFee);
     }
-    async resolve(userId: string, subtotal: number, shippingFee: number, productCode?: string, shippingCode?: string): Promise<CouponBreakdown> {
+    /**
+     * `lines` (nếu có): mã bật "không áp cho SP đang giảm" chỉ tính trên các dòng không được giảm —
+     * cả điều kiện đơn tối thiểu lẫn số tiền giảm.
+     */
+    async resolve(userId: string, subtotal: number, shippingFee: number, productCode?: string, shippingCode?: string, lines?: CouponLine[]): Promise<CouponBreakdown> {
         const res: CouponBreakdown = { productCoupon: null, shippingCoupon: null, discountAmount: 0, shippingDiscount: 0, errors: {} };
 
         if (productCode) {
             const c = await this.prisma.coupon.findUnique({ where: { code: this.norm(productCode) } });
-            const err = await this.validate(c, 'PRODUCT_DISCOUNT', subtotal, userId);
+            const base = c?.excludeDiscounted && lines ? lines.filter((l) => !l.discounted).reduce((s, l) => s + l.lineTotal, 0) : subtotal;
+            const err = c?.excludeDiscounted && lines && base === 0
+                ? 'Mã không áp dụng cho sản phẩm đang được giảm giá'
+                : await this.validate(c, 'PRODUCT_DISCOUNT', base, userId);
             if (err) res.errors.product = err;
-            else { res.productCoupon = c; res.discountAmount = this.calcProductDiscount(c!, subtotal); }
+            else { res.productCoupon = c; res.discountAmount = this.calcProductDiscount(c!, base); }
         }
         if (shippingCode) {
             const c = await this.prisma.coupon.findUnique({ where: { code: this.norm(shippingCode) } });
@@ -66,13 +82,36 @@ export class CouponsService {
         return res;
     }
 
-    async quote(userId: string, subtotal: number, shippingFee: number, productCode?: string, shippingCode?: string) {
-        const r = await this.resolve(userId, subtotal, shippingFee, productCode, shippingCode);
-        const total = Math.max(0, subtotal - r.discountAmount + (shippingFee - r.shippingDiscount));
+    /** Tính giá các dòng hàng client gửi lên bằng hàm tính giá chung (không tin giá từ client). */
+    private async linesOf(items: { productId: string; variantId?: string; quantity: number }[]): Promise<CouponLine[]> {
+        const [products, variants, rules] = await Promise.all([
+            this.prisma.product.findMany({ where: { id: { in: items.map((i) => i.productId) } }, select: { id: true, categoryId: true, price: true, salePrice: true } }),
+            this.prisma.productVariant.findMany({ where: { id: { in: items.flatMap((i) => (i.variantId ? [i.variantId] : [])) } }, select: { id: true, price: true, salePrice: true } }),
+            this.pricing.rules(),
+        ]);
+        const pm = new Map(products.map((p) => [p.id, p]));
+        const vm = new Map(variants.map((v) => [v.id, v]));
+        return items.flatMap((i) => {
+            const p = pm.get(i.productId);
+            if (!p) return [];
+            const v = i.variantId ? vm.get(i.variantId) : undefined;
+            const q = this.pricing.quote(rules, { productId: p.id, categoryId: p.categoryId, price: v?.price ?? p.price, salePrice: v ? v.salePrice : p.salePrice });
+            return [{ lineTotal: q.finalPrice * i.quantity, discounted: q.source !== 'NONE' }];
+        });
+    }
+
+    async quote(userId: string, subtotal: number, shippingFee: number, productCode?: string, shippingCode?: string, items?: { productId: string; variantId?: string; quantity: number }[]) {
+        const lines = items?.length ? await this.linesOf(items) : undefined;
+        const r = await this.resolve(userId, subtotal, shippingFee, productCode, shippingCode, lines);
+        // Cùng công thức với lúc tạo đơn: VAT tính trên tiền hàng sau giảm + phí ship sau giảm
+        const vat = await this.tax.compute(Math.max(0, subtotal - r.discountAmount + (shippingFee - r.shippingDiscount)));
         return {
             discountAmount: r.discountAmount,
             shippingDiscount: r.shippingDiscount,
-            total,
+            total: vat.total,
+            taxRate: vat.taxRate,
+            taxAmount: vat.taxAmount,
+            pricesIncludeTax: vat.pricesIncludeTax,
             errors: r.errors,
             productCode: r.productCoupon?.code ?? null,
             shippingCode: r.shippingCoupon?.code ?? null,
@@ -133,7 +172,7 @@ export class CouponsService {
             return {
                 id: c.id, code: c.code, description: c.description, type: c.type,
                 discountType: c.discountType, value: c.value, maxDiscount: c.maxDiscount,
-                minOrder: c.minOrder, endAt: c.endAt, status,
+                minOrder: c.minOrder, endAt: c.endAt, status, excludeDiscounted: c.excludeDiscounted,
             };
         });
     }
@@ -163,6 +202,7 @@ export class CouponsService {
             return {
                 id: c.id, code: mine ? c.code : null, description: c.description, type: c.type,
                 discountType: c.discountType, value: c.value, maxDiscount: c.maxDiscount, minOrder: c.minOrder,
+                excludeDiscounted: c.excludeDiscounted,
                 claimStartAt: c.claimStartAt, claimEndAt: c.claimEndAt, endAt: c.endAt,
                 claimLimit: c.claimLimit, claimedCount: c.claimedCount, remaining,
                 status, claimed: mine,

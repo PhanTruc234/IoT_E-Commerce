@@ -12,6 +12,7 @@ const DUPLICATE_MESSAGE: Record<string, string> = {
     Coupon: 'Mã giảm giá đã tồn tại',
     Serial: 'Số serial đã tồn tại',
     Specification: 'Thông số này đã tồn tại',
+    InvoiceRequest: 'Đơn này đã có yêu cầu xuất hoá đơn',
 };
 
 function messageFor(e: Prisma.PrismaClientKnownRequestError): string {

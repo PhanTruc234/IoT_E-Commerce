@@ -32,7 +32,7 @@ export class CouponsController {
     @Post('quote')
     @ApiOperation({ summary: 'Thử áp mã để xem giảm bao nhiêu (preview)' })
     quote(@CurrentUser('id') userId: string, @Body() dto: QuoteCouponDto) {
-        return this.coupons.quote(userId, dto.subtotal, dto.shippingFee, dto.productCode, dto.shippingCode);
+        return this.coupons.quote(userId, dto.subtotal, dto.shippingFee, dto.productCode, dto.shippingCode, dto.items);
     }
 
     @OptionalAuth()

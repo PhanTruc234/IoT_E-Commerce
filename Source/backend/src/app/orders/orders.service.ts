@@ -9,7 +9,8 @@ import { IdempotencyService, type IdempotencyContext } from '../../core/idempote
 import { buildMeta } from 'src/core/utils/pagination.util';
 import { ShippingService } from '../shipping/shipping.service';
 import { CouponsService } from '../coupons/coupons.service';
-import { applyPromotions, PromotionsService } from '../promotions/promotions.service';
+import { PricingService } from '../promotions/pricing.service';
+import { TaxService } from '../tax/tax.service';
 import { GhnError, GhnService, type ParcelLine } from '../shipping/ghn.service';
 import { CARRIER_NOTIFY, carrierTarget, GHN_STATUS_LABEL, isBackward, ShipmentsService, type CarrierEvent } from './shipments.service';
 
@@ -28,10 +29,11 @@ export class OrdersService {
         private readonly payments: PaymentsService,
         private readonly shipping: ShippingService,
         private readonly coupons: CouponsService,
-        private readonly promotions: PromotionsService,
+        private readonly pricing: PricingService,
         private readonly ghn: GhnService,
         private readonly shipments: ShipmentsService,
         private readonly idempotency: IdempotencyService,
+        private readonly tax: TaxService,
     ) { }
 
     private genCode(): string {
@@ -134,7 +136,7 @@ export class OrdersService {
         if (!items.length) {
             throw new BadRequestException('Giỏ hàng trống');
         }
-        const promoRules = await this.promotions.getActiveRules();
+        const promoRules = await this.pricing.rules();
         const comboComps = new Map<string, { quantity: number; variantId: string | null; componentId: string; stock: number }[]>();
         for (const it of items) {
             if (!it.variant && it.product.type === 'COMBO') {
@@ -176,6 +178,10 @@ export class OrdersService {
             unitPrice: number;
             quantity: number;
             lineTotal: number;
+            listPrice: number;
+            priceSource: string;
+            promotionId: string | null;
+            promotionName: string | null;
         }[] = [];
 
         for (const it of items) {
@@ -183,9 +189,13 @@ export class OrdersService {
                 throw new BadRequestException(`"${it.product.name}" không còn được bán`);
             }
             const v = it.variant;
-            const baseUnit = v ? (v.salePrice ?? v.price) : (it.product.salePrice ?? it.product.price);
-            const promoUnit = applyPromotions(promoRules, it.productId, it.product.categoryId, v ? v.price : it.product.price);
-            const unitPrice = Math.min(baseUnit, promoUnit);
+            const q = this.pricing.quote(promoRules, {
+                productId: it.productId,
+                categoryId: it.product.categoryId,
+                price: v ? v.price : it.product.price,
+                salePrice: v ? v.salePrice : it.product.salePrice,
+            });
+            const unitPrice = q.finalPrice;
 
             let stock: number;
             if (v) {
@@ -214,6 +224,10 @@ export class OrdersService {
                 unitPrice,
                 quantity: it.quantity,
                 lineTotal: unitPrice * it.quantity,
+                listPrice: q.listPrice,
+                priceSource: q.source,
+                promotionId: q.promotion?.id ?? null,
+                promotionName: q.promotion?.name ?? null,
             });
 
             if (v) {
@@ -248,12 +262,15 @@ export class OrdersService {
             weightGram: it.product.weightGram,
         }));
         const { fee: shippingFee } = await this.shipping.quote({ subtotal, lines, provinceName: addr.province, wardName: addr.wardName });
-        const cp = await this.coupons.resolve(userId, subtotal, shippingFee, dto.productCouponCode, dto.shippingCouponCode);
+        const cp = await this.coupons.resolve(userId, subtotal, shippingFee, dto.productCouponCode, dto.shippingCouponCode,
+            orderItems.map((i) => ({ lineTotal: i.lineTotal, discounted: i.priceSource !== 'NONE' })));
         if (cp.errors.product) throw new BadRequestException(`Mã giảm giá: ${cp.errors.product}`);
         if (cp.errors.shipping) throw new BadRequestException(`Mã vận chuyển: ${cp.errors.shipping}`);
         const discountAmount = cp.discountAmount;
         const shippingDiscount = cp.shippingDiscount;
-        const total = Math.max(0, subtotal - discountAmount + (shippingFee - shippingDiscount));
+        // VAT chụp tại thời điểm đặt: tính trên tiền hàng sau giảm + phí ship sau giảm
+        const vat = await this.tax.compute(Math.max(0, subtotal - discountAmount + (shippingFee - shippingDiscount)));
+        const total = vat.total;
 
         return this.prisma.$transaction(async (tx) => {
             const idemId = idem ? await this.idempotency.claim(tx, idem) : null;
@@ -270,6 +287,9 @@ export class OrdersService {
                     total,
                     discountAmount,
                     shippingDiscount,
+                    taxRate: vat.taxRate,
+                    taxAmount: vat.taxAmount,
+                    pricesIncludeTax: vat.pricesIncludeTax,
                     productCouponCode: cp.productCoupon?.code ?? null,
                     shippingCouponCode: cp.shippingCoupon?.code ?? null,
                     status: 'PENDING',
@@ -358,11 +378,15 @@ export class OrdersService {
         }
         if (stock < qty) throw new BadRequestException(`"${product.name}" chỉ còn ${stock} sản phẩm`);
 
-        // Giá (áp khuyến mãi như luồng giỏ hàng)
-        const rules = await this.promotions.getActiveRules();
-        const baseUnit = variant ? (variant.salePrice ?? variant.price) : (product.salePrice ?? product.price);
-        const promoUnit = applyPromotions(rules, product.id, product.categoryId, variant ? variant.price : product.price);
-        const unitPrice = Math.min(baseUnit, promoUnit);
+        // Giá: cùng hàm tính giá với API sản phẩm và giỏ hàng
+        const rules = await this.pricing.rules();
+        const q = this.pricing.quote(rules, {
+            productId: product.id,
+            categoryId: product.categoryId,
+            price: variant ? variant.price : product.price,
+            salePrice: variant ? variant.salePrice : product.salePrice,
+        });
+        const unitPrice = q.finalPrice;
         const variantLabel = variant ? variant.options.map((o) => `${o.option.attribute.name}: ${o.option.value}`).join(', ') : null;
         const image = variant?.imageUrl ?? product.images[0]?.imageUrl ?? null;
 
@@ -374,12 +398,15 @@ export class OrdersService {
             provinceName: addr.province,
             wardName: addr.wardName,
         });
-        const cp = await this.coupons.resolve(userId, subtotal, shippingFee, dto.productCouponCode, dto.shippingCouponCode);
+        const cp = await this.coupons.resolve(userId, subtotal, shippingFee, dto.productCouponCode, dto.shippingCouponCode,
+            [{ lineTotal: subtotal, discounted: q.source !== 'NONE' }]);
         if (cp.errors.product) throw new BadRequestException(`Mã giảm giá: ${cp.errors.product}`);
         if (cp.errors.shipping) throw new BadRequestException(`Mã vận chuyển: ${cp.errors.shipping}`);
         const discountAmount = cp.discountAmount;
         const shippingDiscount = cp.shippingDiscount;
-        const total = Math.max(0, subtotal - discountAmount + (shippingFee - shippingDiscount));
+        // VAT chụp tại thời điểm đặt: tính trên tiền hàng sau giảm + phí ship sau giảm
+        const vat = await this.tax.compute(Math.max(0, subtotal - discountAmount + (shippingFee - shippingDiscount)));
+        const total = vat.total;
 
         return this.prisma.$transaction(async (tx) => {
             const idemId = idem ? await this.idempotency.claim(tx, idem) : null;
@@ -393,12 +420,18 @@ export class OrdersService {
                     note: dto.note,
                     subtotal, shippingFee, total,
                     discountAmount, shippingDiscount,
+                    taxRate: vat.taxRate, taxAmount: vat.taxAmount, pricesIncludeTax: vat.pricesIncludeTax,
                     productCouponCode: cp.productCoupon?.code ?? null,
                     shippingCouponCode: cp.shippingCoupon?.code ?? null,
                     status: 'PENDING',
                     paymentMethod: dto.paymentMethod,
                     paymentStatus: dto.paymentMethod === 'VNPAY' ? 'PENDING' : 'UNPAID',
-                    items: { create: [{ productId: product.id, variantId: dto.variantId ?? null, name: product.name, variantLabel, image, unitPrice, quantity: qty, lineTotal: subtotal }] },
+                    items: {
+                        create: [{
+                            productId: product.id, variantId: dto.variantId ?? null, name: product.name, variantLabel, image, unitPrice, quantity: qty, lineTotal: subtotal,
+                            listPrice: q.listPrice, priceSource: q.source, promotionId: q.promotion?.id ?? null, promotionName: q.promotion?.name ?? null,
+                        }],
+                    },
                 },
                 include: { items: true },
             });
@@ -448,6 +481,7 @@ export class OrdersService {
                 },
                 shipmentEvents: { orderBy: { occurredAt: 'asc' } },
                 payments: { orderBy: { createdAt: 'asc' }, select: { status: true, amount: true, expiresAt: true, needsRefund: true, createdAt: true } },
+                invoiceRequest: true,
             }
         });
         if (!order) {
@@ -506,6 +540,7 @@ export class OrdersService {
                     }
                 },
                 shipmentEvents: { orderBy: { occurredAt: 'asc' } },
+                invoiceRequest: true,
                 payments: {
                     orderBy: { createdAt: 'asc' },
                     select: {

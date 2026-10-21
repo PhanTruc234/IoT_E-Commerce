@@ -40,6 +40,10 @@ export class CreateCouponDto {
     @ApiPropertyOptional() @IsOptional() @IsBoolean()
     isActive?: boolean;
 
+    @ApiPropertyOptional({ description: 'Không giảm cho sản phẩm đang được giảm riêng / khuyến mại' })
+    @IsOptional() @IsBoolean()
+    excludeDiscounted?: boolean;
+
     @ApiPropertyOptional({ description: 'Bật chế độ săn mã theo khung giờ' })
     @IsOptional() @IsBoolean()
     isFlashSale?: boolean;
