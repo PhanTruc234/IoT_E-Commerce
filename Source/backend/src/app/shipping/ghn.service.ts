@@ -237,9 +237,23 @@ export class GhnService {
         return data;
     }
 
+    /** Không tự gửi lại: timeout thì GHN có thể đã tạo xong → bên gọi tra findByClientCode trước khi tạo lại. */
     async createOrder(input: GhnShipmentInput): Promise<GhnFee & { orderCode: string }> {
-        const raw = await this.request<RawFee>('POST', '/v2/shipping-order/create', this.buildBody(input), 10000);
+        const raw = await this.request<RawFee>('POST', '/v2/shipping-order/create', this.buildBody(input), 10000, 0);
         return { orderCode: raw.order_code, totalFee: raw.total_fee, expectedDeliveryAt: raw.expected_delivery_time ?? null };
+    }
+
+    /** Vận đơn đang hoạt động theo mã đơn của shop. Vận đơn đã huỷ thì GHN báo "không tồn tại" → null. */
+    async findByClientCode(clientOrderCode: string): Promise<{ orderCode: string; status: string; leadtime: string | null } | null> {
+        try {
+            const data = await this.request<{ order_code: string; status: string; leadtime?: string }>(
+                'POST', '/v2/shipping-order/detail-by-client-code', { client_order_code: clientOrderCode },
+            );
+            return { orderCode: data.order_code, status: data.status, leadtime: data.leadtime ?? null };
+        } catch (e) {
+            if (e instanceof GhnError && /không tồn tại|not found/i.test(e.message)) return null;
+            throw e;
+        }
     }
 
     async cancelOrder(orderCode: string): Promise<boolean> {

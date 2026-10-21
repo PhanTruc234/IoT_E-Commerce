@@ -129,34 +129,61 @@ export class ShipmentsService {
             select: { id: true, sku: true, weightGram: true },
         });
         const map = new Map(products.map((p) => [p.id, p]));
+        const input = {
+            clientOrderCode: order.code,
+            toName: order.recipientName,
+            toPhone: order.phone,
+            toAddress: order.street ? `${order.street}, ${order.wardName}, ${order.province}` : order.address,
+            toWardName: order.wardName!,
+            toProvinceName: order.province!,
+            lines: order.items.map((i) => ({
+                name: i.name,
+                code: map.get(i.productId)?.sku,
+                quantity: i.quantity,
+                price: i.unitPrice,
+                weightGram: map.get(i.productId)?.weightGram ?? 300,
+            })),
+            codAmount: order.paymentMethod === 'COD' && order.paymentStatus !== 'PAID' ? order.total : 0,
+            insuranceValue: insuranceFor(order.subtotal),
+            note: order.note,
+        };
+        let res: Awaited<ReturnType<GhnService['createOrder']>>;
         try {
-            const res = await this.ghn.createOrder({
-                clientOrderCode: order.code,
-                toName: order.recipientName,
-                toPhone: order.phone,
-                toAddress: order.street ? `${order.street}, ${order.wardName}, ${order.province}` : order.address,
-                toWardName: order.wardName!,
-                toProvinceName: order.province!,
-                lines: order.items.map((i) => ({
-                    name: i.name,
-                    code: map.get(i.productId)?.sku,
-                    quantity: i.quantity,
-                    price: i.unitPrice,
-                    weightGram: map.get(i.productId)?.weightGram ?? 300,
-                })),
-                codAmount: order.paymentMethod === 'COD' && order.paymentStatus !== 'PAID' ? order.total : 0,
-                insuranceValue: insuranceFor(order.subtotal),
-                note: order.note,
-            });
-            return {
-                trackingCode: res.orderCode,
-                carrierFee: res.totalFee,
-                expectedDeliveryAt: res.expectedDeliveryAt ? new Date(res.expectedDeliveryAt) : null,
-                shippingStatus: 'ready_to_pick',
-            };
+            res = await this.ghn.createOrder(input);
+        } catch (e) {
+            if (!(e instanceof GhnError && e.code === 'NETWORK')) this.fail(e);
+            // Timeout / mất kết nối: không biết GHN đã tạo chưa → tra theo mã đơn trước, chỉ tạo lại khi chắc chắn chưa có
+            const existing = await this.findActive(order.code);
+            if (existing) return existing;
+            try {
+                res = await this.ghn.createOrder(input);
+            } catch (e2) {
+                this.fail(e2);
+            }
+        }
+        return {
+            trackingCode: res.orderCode,
+            carrierFee: res.totalFee as number | null,
+            expectedDeliveryAt: res.expectedDeliveryAt ? new Date(res.expectedDeliveryAt) : null,
+            shippingStatus: 'ready_to_pick',
+        };
+    }
+
+    /** Vận đơn GHN đang hoạt động của đơn (kể cả vận đơn tạo xong nhưng chưa kịp lưu mã vào DB). */
+    async findActive(orderCode: string) {
+        let found: Awaited<ReturnType<GhnService['findByClientCode']>>;
+        try {
+            found = await this.ghn.findByClientCode(orderCode);
         } catch (e) {
             this.fail(e);
         }
+        if (!found || found.status === 'cancel') return null;
+        return {
+            trackingCode: found.orderCode,
+            carrierFee: null as number | null,
+            expectedDeliveryAt: found.leadtime ? new Date(found.leadtime) : null,
+            shippingStatus: found.status,
+        };
     }
 
     async cancel(trackingCode: string) {

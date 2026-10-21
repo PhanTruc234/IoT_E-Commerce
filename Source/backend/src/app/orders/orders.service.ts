@@ -648,6 +648,14 @@ export class OrdersService {
         if (status === 'CANCELLED' && !opts.carrier && order.trackingCode && order.shippingStatus !== 'cancel') {
             await this.shipments.cancel(order.trackingCode);
             shipment = { shippingStatus: 'cancel' };
+        } else if (status === 'CANCELLED' && !opts.carrier && !order.trackingCode && order.status === 'CONFIRMED' && this.shipments.canShip(order)) {
+            // Đơn đã xác nhận mà chưa có mã vận đơn: có thể GHN đã tạo nhưng server chưa kịp lưu → tìm và huỷ để shipper không tới lấy
+            const orphan = await this.shipments.findActive(order.code);
+            if (orphan) {
+                await this.shipments.cancel(orphan.trackingCode);
+                shipment = { trackingCode: orphan.trackingCode, shippingStatus: 'cancel' };
+                note ??= `Huỷ đơn & hoàn kho · đã huỷ vận đơn GHN ${orphan.trackingCode} chưa được lưu`;
+            }
         }
 
         if (status === 'CANCELLED') {
@@ -713,12 +721,23 @@ export class OrdersService {
             throw new BadRequestException('Đơn chưa có phường/xã theo địa chỉ mới nên không tạo được vận đơn GHN');
         }
         const shipment = await this.shipments.create(order);
-        await this.prisma.$transaction([
-            this.prisma.order.update({ where: { id }, data: shipment }),
-            this.prisma.orderStatusHistory.create({
+        // Bấm "Tạo vận đơn" 2 lần: GHN trả cùng mã → chỉ request đầu lưu & ghi lịch sử
+        const saved = await this.prisma.$transaction(async (tx) => {
+            const r = await tx.order.updateMany({ where: { id, status: 'CONFIRMED', trackingCode: null }, data: shipment });
+            if (!r.count) return false;
+            await tx.orderStatusHistory.create({
                 data: { orderId: id, status: 'CONFIRMED', changedBy: actor ?? 'Quản trị viên', note: `Đã tạo vận đơn GHN ${shipment.trackingCode}` },
-            }),
-        ]);
+            });
+            return true;
+        });
+        if (!saved) {
+            const cur = await this.prisma.order.findUnique({ where: { id }, select: { trackingCode: true } });
+            // Đơn vừa bị huỷ (hoặc đã lưu vận đơn khác) → huỷ vận đơn vừa tạo để không bị mồ côi
+            if (cur?.trackingCode !== shipment.trackingCode) {
+                await this.shipments.cancel(shipment.trackingCode).catch(() => undefined);
+                throw new ConflictException('Đơn vừa được thay đổi bởi thao tác khác, vui lòng tải lại trang');
+            }
+        }
         return this.findOneAdmin(id);
     }
     async applyCarrierEvent(e: CarrierEvent, verify: boolean) {
